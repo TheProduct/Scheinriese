@@ -19,6 +19,8 @@
 		5323E6B60EAFCA7E003A9687 /* QTKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5323E6B50EAFCA7E003A9687 /* QTKit.framework */; };
 		53E3CDFC0E86099300238D2B /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 53E3CDFB0E86099300238D2B /* Carbon.framework */; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
+		9578417413FBCBFC00EF313B /* Tessellator.c in Sources */ = {isa = PBXBuildFile; fileRef = 9578417313FBCBFC00EF313B /* Tessellator.c */; };
+		957842A013FBD97300EF313B /* settings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9578429F13FBD97300EF313B /* settings.txt */; };
 		9594F9F213F974A300244385 /* Kinect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9594F9F113F974A300244385 /* Kinect.cpp */; };
 		9594F9F913F9778E00244385 /* pf_tempesta_seven.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9594F9F813F9778E00244385 /* pf_tempesta_seven.ttf */; };
 		95BC45D713F961F800C9C108 /* SimpleGUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 95BC45D613F961F800C9C108 /* SimpleGUI.cpp */; };
@@ -44,6 +46,10 @@
 		53E3CDFB0E86099300238D2B /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = /System/Library/Frameworks/Carbon.framework; sourceTree = "<absolute>"; };
 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8D1107320486CEB800E47090 /* Scheinriese.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scheinriese.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9578417313FBCBFC00EF313B /* Tessellator.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = Tessellator.c; path = ../src/Tessellator.c; sourceTree = "<group>"; };
+		9578417E13FBD18200EF313B /* Tessellator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Tessellator.h; path = ../src/Tessellator.h; sourceTree = "<group>"; };
+		9578429213FBD60900EF313B /* Resources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Resources.h; path = ../include/Resources.h; sourceTree = "<group>"; };
+		9578429F13FBD97300EF313B /* settings.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = settings.txt; path = ../resources/settings.txt; sourceTree = "<group>"; };
 		9594F9F113F974A300244385 /* Kinect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Kinect.cpp; path = "../Users/dennis/dev/cinder-blocks/cinder-Cinder-Kinect-ee576fc/src/Kinect.cpp"; sourceTree = DEVELOPER_DIR; };
 		9594F9F813F9778E00244385 /* pf_tempesta_seven.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = pf_tempesta_seven.ttf; path = ../resources/pf_tempesta_seven.ttf; sourceTree = "<group>"; };
 		95BC45D613F961F800C9C108 /* SimpleGUI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SimpleGUI.cpp; path = "/Users/dennis/dev/cinder-blocks/MowaLibs/SimpleGUI/src/SimpleGUI.cpp"; sourceTree = "<absolute>"; };
@@ -76,6 +82,8 @@
 			isa = PBXGroup;
 			children = (
 				00BAE6590E7ED9C10018A608 /* ScheinrieseApp.cpp */,
+				9578417313FBCBFC00EF313B /* Tessellator.c */,
+				9578417E13FBD18200EF313B /* Tessellator.h */,
 			);
 			name = Source;
 			sourceTree = "<group>";
@@ -132,6 +140,7 @@
 		29B97315FDCFA39411CA2CEA /* Headers */ = {
 			isa = PBXGroup;
 			children = (
+				9578429213FBD60900EF313B /* Resources.h */,
 				32CA4F630368D1EE00C91783 /* Scheinriese_Prefix.pch */,
 			);
 			name = Headers;
@@ -140,6 +149,7 @@
 		29B97317FDCFA39411CA2CEA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				9578429F13FBD97300EF313B /* settings.txt */,
 				9594F9F813F9778E00244385 /* pf_tempesta_seven.ttf */,
 				8D1107310486CEB800E47090 /* Info.plist */,
 				00CCAF14116A9FEE008396D5 /* CinderApp.icns */,
@@ -233,6 +243,7 @@
 			files = (
 				00CCAF15116A9FEE008396D5 /* CinderApp.icns in Resources */,
 				9594F9F913F9778E00244385 /* pf_tempesta_seven.ttf in Resources */,
+				957842A013FBD97300EF313B /* settings.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,6 +257,7 @@
 				00BAE65A0E7ED9C10018A608 /* ScheinrieseApp.cpp in Sources */,
 				95BC45D713F961F800C9C108 /* SimpleGUI.cpp in Sources */,
 				9594F9F213F974A300244385 /* Kinect.cpp in Sources */,
+				9578417413FBCBFC00EF313B /* Tessellator.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
