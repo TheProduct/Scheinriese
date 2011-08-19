@@ -1,0 +1,3 @@
+Threshold : 127
+Blur : 1
+Tilt : 10
