@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 44;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -19,12 +19,11 @@
 		5323E6B60EAFCA7E003A9687 /* QTKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5323E6B50EAFCA7E003A9687 /* QTKit.framework */; };
 		53E3CDFC0E86099300238D2B /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 53E3CDFB0E86099300238D2B /* Carbon.framework */; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
-		9578417413FBCBFC00EF313B /* Tessellator.c in Sources */ = {isa = PBXBuildFile; fileRef = 9578417313FBCBFC00EF313B /* Tessellator.c */; };
-		957842A013FBD97300EF313B /* settings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9578429F13FBD97300EF313B /* settings.txt */; };
-		9594F9F213F974A300244385 /* Kinect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9594F9F113F974A300244385 /* Kinect.cpp */; };
-		9594F9F913F9778E00244385 /* pf_tempesta_seven.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9594F9F813F9778E00244385 /* pf_tempesta_seven.ttf */; };
-		95BC45D713F961F800C9C108 /* SimpleGUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 95BC45D613F961F800C9C108 /* SimpleGUI.cpp */; };
-		95BC45DD13F9671C00C9C108 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 95BC45DC13F9671C00C9C108 /* IOKit.framework */; };
+		9531773D1413C96200F15AA4 /* SimpleGUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9531773C1413C96200F15AA4 /* SimpleGUI.cpp */; };
+		9531773F1413CAD900F15AA4 /* settings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9531773E1413CAD900F15AA4 /* settings.txt */; };
+		953177971413CF6F00F15AA4 /* pf_tempesta_seven.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 953177961413CF6F00F15AA4 /* pf_tempesta_seven.ttf */; };
+		958E32D214166AAE0081EAB1 /* Kinect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 958E32D114166AAE0081EAB1 /* Kinect.cpp */; };
+		958E32D814166E2C0081EAB1 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 958E32D714166E2C0081EAB1 /* IOKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,14 +45,13 @@
 		53E3CDFB0E86099300238D2B /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = /System/Library/Frameworks/Carbon.framework; sourceTree = "<absolute>"; };
 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8D1107320486CEB800E47090 /* Scheinriese.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scheinriese.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		9578417313FBCBFC00EF313B /* Tessellator.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = Tessellator.c; path = ../src/Tessellator.c; sourceTree = "<group>"; };
-		9578417E13FBD18200EF313B /* Tessellator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Tessellator.h; path = ../src/Tessellator.h; sourceTree = "<group>"; };
-		9578429213FBD60900EF313B /* Resources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Resources.h; path = ../include/Resources.h; sourceTree = "<group>"; };
-		9578429F13FBD97300EF313B /* settings.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = settings.txt; path = ../resources/settings.txt; sourceTree = "<group>"; };
-		9594F9F113F974A300244385 /* Kinect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Kinect.cpp; path = "../Users/dennis/dev/cinder-blocks/cinder-Cinder-Kinect-ee576fc/src/Kinect.cpp"; sourceTree = DEVELOPER_DIR; };
-		9594F9F813F9778E00244385 /* pf_tempesta_seven.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = pf_tempesta_seven.ttf; path = ../resources/pf_tempesta_seven.ttf; sourceTree = "<group>"; };
-		95BC45D613F961F800C9C108 /* SimpleGUI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SimpleGUI.cpp; path = "/Users/dennis/dev/cinder-blocks/MowaLibs/SimpleGUI/src/SimpleGUI.cpp"; sourceTree = "<absolute>"; };
-		95BC45DC13F9671C00C9C108 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		953177371413C93600F15AA4 /* Resources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Resources.h; path = ../include/Resources.h; sourceTree = "<group>"; };
+		9531773B1413C96200F15AA4 /* SimpleGUI.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SimpleGUI.h; path = ../include/SimpleGUI.h; sourceTree = "<group>"; };
+		9531773C1413C96200F15AA4 /* SimpleGUI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SimpleGUI.cpp; path = ../src/SimpleGUI.cpp; sourceTree = "<group>"; };
+		9531773E1413CAD900F15AA4 /* settings.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = settings.txt; path = ../resources/settings.txt; sourceTree = "<group>"; };
+		953177961413CF6F00F15AA4 /* pf_tempesta_seven.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = pf_tempesta_seven.ttf; path = ../resources/pf_tempesta_seven.ttf; sourceTree = "<group>"; };
+		958E32D114166AAE0081EAB1 /* Kinect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Kinect.cpp; path = "../../../../../../../../../dev/cinder-blocks/cinder-Cinder-Kinect-ee576fc/src/Kinect.cpp"; sourceTree = "<group>"; };
+		958E32D714166E2C0081EAB1 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,7 +69,7 @@
 				00B784B40FF439BC000DE1D7 /* AudioToolbox.framework in Frameworks */,
 				00B784B50FF439BC000DE1D7 /* AudioUnit.framework in Frameworks */,
 				00B784B60FF439BC000DE1D7 /* CoreAudio.framework in Frameworks */,
-				95BC45DD13F9671C00C9C108 /* IOKit.framework in Frameworks */,
+				958E32D814166E2C0081EAB1 /* IOKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,8 +80,6 @@
 			isa = PBXGroup;
 			children = (
 				00BAE6590E7ED9C10018A608 /* ScheinrieseApp.cpp */,
-				9578417313FBCBFC00EF313B /* Tessellator.c */,
-				9578417E13FBD18200EF313B /* Tessellator.h */,
 			);
 			name = Source;
 			sourceTree = "<group>";
@@ -91,6 +87,7 @@
 		1058C7A0FEA54F0111CA2CBB /* Linked Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				958E32D714166E2C0081EAB1 /* IOKit.framework */,
 				00B784AF0FF439BC000DE1D7 /* Accelerate.framework */,
 				00B784B00FF439BC000DE1D7 /* AudioToolbox.framework */,
 				00B784B10FF439BC000DE1D7 /* AudioUnit.framework */,
@@ -101,7 +98,6 @@
 				53E3CDFB0E86099300238D2B /* Carbon.framework */,
 				0091D8F80E81B9330029341E /* OpenGL.framework */,
 				1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */,
-				95BC45DC13F9671C00C9C108 /* IOKit.framework */,
 			);
 			name = "Linked Frameworks";
 			sourceTree = "<group>";
@@ -127,7 +123,7 @@
 		29B97314FDCFA39411CA2CEA /* Scheinriese */ = {
 			isa = PBXGroup;
 			children = (
-				9596004513F5848000A8D1DE /* Blocks */,
+				953177321413C90B00F15AA4 /* Blocks */,
 				29B97315FDCFA39411CA2CEA /* Headers */,
 				080E96DDFE201D6D7F000001 /* Source */,
 				29B97317FDCFA39411CA2CEA /* Resources */,
@@ -140,7 +136,7 @@
 		29B97315FDCFA39411CA2CEA /* Headers */ = {
 			isa = PBXGroup;
 			children = (
-				9578429213FBD60900EF313B /* Resources.h */,
+				953177371413C93600F15AA4 /* Resources.h */,
 				32CA4F630368D1EE00C91783 /* Scheinriese_Prefix.pch */,
 			);
 			name = Headers;
@@ -149,8 +145,8 @@
 		29B97317FDCFA39411CA2CEA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				9578429F13FBD97300EF313B /* settings.txt */,
-				9594F9F813F9778E00244385 /* pf_tempesta_seven.ttf */,
+				953177961413CF6F00F15AA4 /* pf_tempesta_seven.ttf */,
+				9531773E1413CAD900F15AA4 /* settings.txt */,
 				8D1107310486CEB800E47090 /* Info.plist */,
 				00CCAF14116A9FEE008396D5 /* CinderApp.icns */,
 			);
@@ -166,30 +162,31 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		9594F9EF13F9749200244385 /* kinect */ = {
+		953177321413C90B00F15AA4 /* Blocks */ = {
 			isa = PBXGroup;
 			children = (
-				9594F9F113F974A300244385 /* Kinect.cpp */,
-			);
-			name = kinect;
-			sourceTree = "<group>";
-		};
-		9596004513F5848000A8D1DE /* Blocks */ = {
-			isa = PBXGroup;
-			children = (
-				9594F9EF13F9749200244385 /* kinect */,
-				959600D613F5869F00A8D1DE /* SimpleGUI */,
+				958E32CF14166A6F0081EAB1 /* Kinect */,
+				953177331413C91A00F15AA4 /* SimpleGUI */,
 			);
 			name = Blocks;
 			sourceTree = "<group>";
 		};
-		959600D613F5869F00A8D1DE /* SimpleGUI */ = {
+		953177331413C91A00F15AA4 /* SimpleGUI */ = {
 			isa = PBXGroup;
 			children = (
-				95BC45D613F961F800C9C108 /* SimpleGUI.cpp */,
+				9531773B1413C96200F15AA4 /* SimpleGUI.h */,
+				9531773C1413C96200F15AA4 /* SimpleGUI.cpp */,
 			);
 			name = SimpleGUI;
-			sourceTree = SOURCE_ROOT;
+			sourceTree = "<group>";
+		};
+		958E32CF14166A6F0081EAB1 /* Kinect */ = {
+			isa = PBXGroup;
+			children = (
+				958E32D114166AAE0081EAB1 /* Kinect.cpp */,
+			);
+			name = Kinect;
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
@@ -217,11 +214,8 @@
 /* Begin PBXProject section */
 		29B97313FDCFA39411CA2CEA /* Project object */ = {
 			isa = PBXProject;
-			attributes = {
-				LastUpgradeCheck = 0410;
-			};
 			buildConfigurationList = C01FCF4E08A954540054247B /* Build configuration list for PBXProject "Scheinriese" */;
-			compatibilityVersion = "Xcode 3.2";
+			compatibilityVersion = "Xcode 3.0";
 			developmentRegion = English;
 			hasScannedForEncodings = 1;
 			knownRegions = (
@@ -242,8 +236,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				00CCAF15116A9FEE008396D5 /* CinderApp.icns in Resources */,
-				9594F9F913F9778E00244385 /* pf_tempesta_seven.ttf in Resources */,
-				957842A013FBD97300EF313B /* settings.txt in Resources */,
+				9531773F1413CAD900F15AA4 /* settings.txt in Resources */,
+				953177971413CF6F00F15AA4 /* pf_tempesta_seven.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -255,9 +249,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				00BAE65A0E7ED9C10018A608 /* ScheinrieseApp.cpp in Sources */,
-				95BC45D713F961F800C9C108 /* SimpleGUI.cpp in Sources */,
-				9594F9F213F974A300244385 /* Kinect.cpp in Sources */,
-				9578417413FBCBFC00EF313B /* Tessellator.c in Sources */,
+				9531773D1413C96200F15AA4 /* SimpleGUI.cpp in Sources */,
+				958E32D214166AAE0081EAB1 /* Kinect.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,20 +262,22 @@
 			buildSettings = {
 				COPY_PHASE_STRIP = NO;
 				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_MODEL_TUNING = G5;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = Scheinriese_Prefix.pch;
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_PREPROCESSOR_DEFINITIONS = "";
 				INSTALL_PATH = "$(HOME)/Applications";
 				OTHER_LDFLAGS = (
 					"\"$(CINDER_PATH)/lib/libcinder_d.a\"",
-					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_imgproc.a\"",
-					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_core.a\"",
 					"\"$(CINDER_PATH)/blocks/kinect/lib/macosx/libfreenect.a\"",
 					"\"$(CINDER_PATH)/blocks/kinect/lib/macosx/libusb-1.0.a\"",
+					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_core.a\"",
+					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_imgproc.a\"",
+					"\"$(CINDER_PATH)/blocks/cvblobs/lib/macosx/libcvblob.a\"",
 				);
 				PRODUCT_NAME = Scheinriese;
 				WRAPPER_EXTENSION = app;
@@ -297,19 +292,20 @@
 				GCC_FAST_MATH = YES;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
+				GCC_MODEL_TUNING = G5;
 				GCC_OPTIMIZATION_LEVEL = 3;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = Scheinriese_Prefix.pch;
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				INFOPLIST_FILE = Info.plist;
-				INFOPLIST_PREPROCESSOR_DEFINITIONS = "";
 				INSTALL_PATH = "$(HOME)/Applications";
 				OTHER_LDFLAGS = (
 					"\"$(CINDER_PATH)/lib/libcinder.a\"",
-					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_imgproc.a\"",
-					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_core.a\"",
 					"\"$(CINDER_PATH)/blocks/kinect/lib/macosx/libfreenect.a\"",
 					"\"$(CINDER_PATH)/blocks/kinect/lib/macosx/libusb-1.0.a\"",
+					"\"$(CINDER_PATH)/blocks/cvblobs/lib/macosx/libcvblob.a\"",
+					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_imgproc.a\"",
+					"\"$(CINDER_PATH)/blocks/opencv/lib/macosx/libopencv_core.a\"",
 				);
 				PRODUCT_NAME = Scheinriese;
 				STRIP_INSTALLED_PRODUCT = YES;
@@ -327,8 +323,9 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "\"$(CINDER_PATH)/boost\"";
 				MACOSX_DEPLOYMENT_TARGET = 10.5;
-				SDKROOT = macosx10.6;
-				USER_HEADER_SEARCH_PATHS = "\"$(CINDER_PATH)/include\" ../include \"$(CINDER_PATH)/blocks/opencv/include\" \"$(CINDER_PATH)/blocks/kinect/include\" \"$(CINDER_PATH)/blocks/MowaLibs/SimpleGUI/include\"";
+				PREBINDING = NO;
+				SDKROOT = "$(DEVELOPER_SDK_DIR)/MacOSX10.6.sdk";
+				USER_HEADER_SEARCH_PATHS = "\"$(CINDER_PATH)/include\" ../include \"$(CINDER_PATH)/blocks/opencv/include\" \"$(CINDER_PATH)/blocks/kinect/include\" \"$(CINDER_PATH)/blocks/cvblobs/include\"";
 			};
 			name = Debug;
 		};
@@ -342,8 +339,9 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "\"$(CINDER_PATH)/boost\"";
 				MACOSX_DEPLOYMENT_TARGET = 10.5;
-				SDKROOT = macosx10.6;
-				USER_HEADER_SEARCH_PATHS = "\"$(CINDER_PATH)/include\" ../include \"$(CINDER_PATH)/blocks/opencv/include\" \"$(CINDER_PATH)/blocks/kinect/include\" \"$(CINDER_PATH)/blocks/MowaLibs/SimpleGUI/include\"";
+				PREBINDING = NO;
+				SDKROOT = "$(DEVELOPER_SDK_DIR)/MacOSX10.6.sdk";
+				USER_HEADER_SEARCH_PATHS = "\"$(CINDER_PATH)/include\" ../include \"$(CINDER_PATH)/blocks/opencv/include\" \"$(CINDER_PATH)/blocks/kinect/include\" \"$(CINDER_PATH)/blocks/cvblobs/include\"";
 			};
 			name = Release;
 		};

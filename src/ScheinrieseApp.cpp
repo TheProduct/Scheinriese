@@ -3,280 +3,316 @@
 #include "cinder/app/AppBasic.h"
 #include "cinder/gl/gl.h"
 #include "cinder/gl/Texture.h"
+#include "cinder/Capture.h"
+#include "cinder/gl/GlslProg.h"
+
 #include "CinderOpenCv.h"
 #include "Kinect.h"
-#include "libfreenect.h"
+#include "cvblob.h"
 #include "SimpleGUI.h"
-#include <GLUT/glut.h>
 
-#include "Tessellator.c"
 
 using namespace ci;
 using namespace ci::app;
 using namespace std;
 using namespace mowa::sgui;
+using namespace cvb;
 
+
+const std::string       RES_SETTINGS = "settings.txt";
+const int               CAMERA_WIDTH = 640;
+const int               CAMERA_HEIGHT = 480;
 
 class ScheinrieseApp : public AppBasic {
-    
 public:
 	void setup();
-	void mouseDown( MouseEvent event );
-    void keyDown( KeyEvent event );
+	void mouseDown( MouseEvent event );	
 	void update();
 	void draw();
+    void keyDown( KeyEvent pEvent );
+    void quit();
     
 private:
-    void drawDebug();
-    void findContours(gl::Texture theDepthImage);
-    void findBlobs();
-    void handleKinect();
-    bool showDebug( MouseEvent event );
+    void drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks);
     
-    SimpleGUI* mGui;
-	float mThreshold;
-	float mBlur;
-    float mKinectTilt;
+    /* properties */
+    SimpleGUI *             mGui;
     
-    Kinect mKinect;
-	bool hasKinect;
+    int                     WINDOW_WIDTH;
+    int                     WINDOW_HEIGHT;    
     
-	gl::Texture mDepthTexture;
-    gl::Texture mColorTexture;
-    gl::Texture mPreviewTexture;
+    int                     FRAME_RATE;   
+    bool                    FULLSCREEN;
+    int                     KINECT_ANGLE;  
+    int                     BLOB_THRESHOLD;
+    int                     BLOB_THRESHOLD_A;
+    int                     BLOB_THRESHOLD_B;
+    int                     BLOB_MIN_AREA;
+    int                     BLOB_MAX_AREA;
+    int                     BLOB_BLUR;
+
+    /* output */
+    LabelControl *          mFPSOut;
+    LabelControl *          mFacesOut;
     
-	vector<vector<cv::Point> > mContours;
+    double                  mTime;
     
-    bool mShowDebug;
-    TextureVarControl* mDebugViewColor;
-    TextureVarControl* mDebugViewDepth;
+    /* kinect */
+    Kinect *                mKinect;
+	gl::Texture             mDepthTexture;
+	gl::Texture             mColorTexture;
+	gl::Texture             mBlobTexture;
+    
+    /* blobs */
+    CvBlobs                 mBlobs;
+    CvTracks                mTracks;
+
 };
 
-void ScheinrieseApp::setup()
-{   
-    // GUI
-	mGui = new SimpleGUI(this);
-    mGui->addColumn();
-    mGui->addLabel("CONTROLS");
-	mGui->addParam("Threshold", &mThreshold, 0, 255, 127);
-	mGui->addParam("Blur", &mBlur, 1, 20, 1);
-	mGui->addParam("Tilt", &mKinectTilt, -30, 30, 0);
-    mGui->addColumn();
-    mGui->addLabel("DEBUG VIEW");
-    mGui->addParam("Show Debug", &mShowDebug, true);
-//    mGui->addButton("Show Debug")->registerClick(this, &ScheinrieseApp::showDebug);
+void ScheinrieseApp::setup() {
+    /* settings */
+    mGui = new SimpleGUI(this);
+    mGui->addParam("WINDOW_WIDTH", &WINDOW_WIDTH, 0, 2048, 640);
+    mGui->addParam("WINDOW_HEIGHT", &WINDOW_HEIGHT, 0, 2048, 480);
+    mGui->addParam("FULLSCREEN", &FULLSCREEN, false, 0);
+    // visible
+    mGui->addParam("FRAME_RATE", &FRAME_RATE, 1, 120, 30);
+    mGui->addParam("KINECT_ANGLE", &KINECT_ANGLE, -31, 30, 20);
+    mGui->addParam("BLOB_THRESHOLD", &BLOB_THRESHOLD, 1, 255, 127);
+//    mGui->addParam("BLOB_THRESHOLD_A", &BLOB_THRESHOLD_A, 1, 255, 127);
+//    mGui->addParam("BLOB_THRESHOLD_B", &BLOB_THRESHOLD_B, 1, 255, 127);
+    mGui->addParam("BLOB_MIN_AREA", &BLOB_MIN_AREA, 1, 100000, 5000);
+    mGui->addParam("BLOB_MAX_AREA", &BLOB_MAX_AREA, 1, 500000, 100000);
+    mGui->addParam("BLOB_BLUR", &BLOB_BLUR, 0, 20, 7);
     
+    // output
+    mGui->addSeparator();
+    mFPSOut = mGui->addLabel("");
+    mFacesOut = mGui->addLabel("");
+
+    /* clean up controller window */
+    mGui->getControlByName("WINDOW_WIDTH")->active=false;
+    mGui->getControlByName("WINDOW_HEIGHT")->active=false;
+    mGui->getControlByName("FULLSCREEN")->active=false;
+
     mGui->load(getResourcePath(RES_SETTINGS));
-    mGui->setEnabled(false);
-    
-    mBlur = 1;
-	mThreshold = 127;
-    
-    mShowDebug = true;
-    
-	// KINECT
-	hasKinect = false;
-	console() << "### INFO: There are " << Kinect::getNumDevices() << " Kinects connected." << endl;
+    mGui->setEnabled(true);
+    mGui->dump(); 
+
+    /* kinect */
+	console() << "+++ found " << Kinect::getNumDevices() << " kinect(s)." << std::endl;
 	if (Kinect::getNumDevices() >= 1) {
-		mKinect = Kinect( Kinect::Device() );
-		mKinect.setTilt(mKinectTilt);
-		hasKinect = true;
+		mKinect = new Kinect( Kinect::Device(0) );
+		mKinect->setTilt(0);
+//        mKinect->setVideoInfrared();
+        console() << "+++ waiting for kinect ..." << endl;
+        while(!mKinect->checkNewDepthFrame()) {}
+        mDepthTexture = mKinect->getDepthImage();
+        mBlobTexture = mKinect->getDepthImage();
+        while(!mKinect->checkNewVideoFrame()) {}
+        mColorTexture = mKinect->getVideoImage();
+        console() << "depth: " << mDepthTexture.getWidth() << ", " << mDepthTexture.getHeight() << endl;
+        console() << "color: " << mColorTexture.getWidth() << ", " << mColorTexture.getHeight() << endl;
 	}
+    
+    /* app */
+    setFullScreen( FULLSCREEN );
+    if (FULLSCREEN) {
+        hideCursor();
+    }
+    setWindowSize( WINDOW_WIDTH, WINDOW_HEIGHT );
 }
 
-
-void ScheinrieseApp::update()
+void ScheinrieseApp::mouseDown( MouseEvent event )
 {
-    handleKinect();
-	
-	if (mDepthTexture) {
-		findContours(mDepthTexture);
-	}
 }
 
-void ScheinrieseApp::handleKinect() 
-{
-    if (!hasKinect) {
-		return;
-	}
-    
-    if( mKinectTilt != mKinect.getTilt() ) {
-		mKinect.setTilt( mKinectTilt );
-    }  
-    
-	if( mKinect.checkNewDepthFrame() ) {
-		mDepthTexture = mKinect.getDepthImage();
+void ScheinrieseApp::update() {
+    double mDeltaTime = getElapsedSeconds() - mTime;
+    mTime = getElapsedSeconds();
+    {
+        stringstream mStr;
+        mStr << "FPS: " << getAverageFps();
+        mFPSOut->setText(mStr.str());
     }
-	
-	if( mKinect.checkNewVideoFrame() ) {
-		mColorTexture = mKinect.getVideoImage();
+    {
+        stringstream mStr;
+        mStr << "BLOBS: " << mBlobs.size();
+        mFacesOut->setText(mStr.str());
     }
-    
-    /* debug view */
-    if (mColorTexture && !mDebugViewColor) {
-        mGui->addLabel("COLOR");
-        mDebugViewColor = mGui->addParam("COLOR", &mColorTexture);
-        mDebugViewColor->var = &mColorTexture;
-        console() << "color" << endl;
-    }
-    
-    if (mDepthTexture && !mDebugViewDepth) {
-        mGui->addLabel("DEPTH");
-        mDebugViewDepth = mGui->addParam("DEPTH", &mDepthTexture);
-        mDebugViewDepth->var = &mDepthTexture;
-        console() << "depth" << endl;
+    setFrameRate( FRAME_RATE );
+
+    /* kinect */
+    if ( mKinect ) {
+        if( mKinect->checkNewVideoFrame() ) {
+            if (mGui->isEnabled()) {
+                mColorTexture.update(mKinect->getVideoImage());
+//                cv::Mat mMat = toOcv(mKinect->getVideoImage());
+//                cvEqualizeHist(&mMat, &mMat);
+//                mColorTexture.update(fromOcv(mMat));
+            }
+        }
+        if (mKinect->getTilt() != KINECT_ANGLE) {
+            mKinect->setTilt(KINECT_ANGLE);
+        }
+        if (mKinect->checkNewDepthFrame()) {
+            Surface mSurface = mKinect->getDepthImage();
+
+            /* get image from capture device */
+            Surface::Iter iter = mSurface.getIter();
+            
+            /* convert to grey scale */
+            IplImage* mGreyImage = cvCreateImage(cvSize(mSurface.getWidth(), mSurface.getHeight()), IPL_DEPTH_8U, 1);
+            int i = 0;
+            while( iter.line() ) {
+                while( iter.pixel() ) {
+                    mGreyImage->imageData[i] = iter.r();
+                    i++;
+                }
+            }
+            
+            /* threshold */
+            if (BLOB_BLUR >= 1) {
+                cvSmooth(mGreyImage, mGreyImage, CV_BLUR, BLOB_BLUR, BLOB_BLUR);
+            }
+//            cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD_A, BLOB_THRESHOLD_B, CV_THRESH_TRUNC);
+            cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD, 255, CV_THRESH_BINARY);
+            
+            /* track blobs */
+            cvReleaseBlobs(mBlobs);
+            cvReleaseTracks(mTracks);
+            
+            IplImage* mLabelImg = cvCreateImage(cvGetSize(mGreyImage), IPL_DEPTH_LABEL, 1);
+            
+            cvLabel(mGreyImage, mLabelImg, mBlobs);
+            
+            /* write image to texture */
+            if (mGui->isEnabled()) {
+                mDepthTexture.update(mSurface);
+                cv::Mat mResultTexCV = mGreyImage;
+                mBlobTexture.update(fromOcv(mResultTexCV));
+            }
+            
+            cvFilterByArea(mBlobs, BLOB_MIN_AREA, BLOB_MAX_AREA);
+            cvUpdateTracks(mBlobs, mTracks, 5., 10);
+            
+            /* clean up */
+            cvReleaseImage(&mGreyImage);
+            cvReleaseImage(&mLabelImg);
+        }
     }
 }
 
 void ScheinrieseApp::draw()
 {
 	gl::clear( Color( 0, 0, 0 ) ); 
-	gl::setMatricesWindow( getWindowWidth(), getWindowHeight() );
-	glColor3f( 1.0f, 1.0f, 1.0f );
-	
-    /* debug view */
-    drawDebug();
     
-    //	glPushMatrix();
-    //	for (int i = 0; i < mContours.size(); i++) {
-    //		glColor3f(0.0f,1.0f,1.0f);
-    //		glBegin( GL_LINE_STRIP );
-    //		for (int j = 0; j < mContours[i].size(); j+=10) {
-    //			glVertex2f( mContours[i][j].x, mContours[i][j].y);
-    //		}
-    //		glEnd();
-    //	}
-    //	glPopMatrix();
-    
-    /*
-     //for (int i = 0; i < mContours.size(); i++) {
-     //		vector<p2t::Point*> polyline;
-     //		for (int j = 0; j < mContours[i].size(); j+=1) {
-     //			polyline.push_back(new p2t::Point(mContours[i][j].x, mContours[i][j].y));
-     //		}
-     //		if (polyline.size() > 9) {
-     //		cout << "Number of line points = " << polyline.size() << endl;
-     //		CDT* cdt = new CDT(polyline);
-     //		cdt->Triangulate();
-     //		//vector<p2t::Triangle*> triangles = cdt->GetTriangles();
-     //		//cout << "Number of triangles = " << triangles.size() << endl;
-     //		}
-     //	}
-     
-     gl::setMatricesWindow( getWindowWidth(), getWindowHeight() );
-     glPushMatrix();
-     glTranslatef(200,200,0);
-     GLdouble quad1[4*3] = { -100,300,0, 0,0,0, 100,300,0, 0,200,0 };
-     tessellate(quad1, 12);
-     glPopMatrix();
-     
-     for (int i = 0; i < mContours.size(); i++) {
-     gl::setMatricesWindow( getWindowWidth(), getWindowHeight() );
-     glPushMatrix();
-     for (int j = 0; j < mContours[i].size(); j+=1) {
-     
-     }
-     glPopMatrix();
-     }
-     */	
-	// GUI
-	mGui->draw();
-}
-
-void ScheinrieseApp::drawDebug()
-{
-    if ( mShowDebug ) {
-        if ( mDepthTexture ) {
-            gl::draw( mDepthTexture );
+    /* gui */
+    if (mGui->isEnabled()) {
+        gl::color(1, 1, 1, 1);
+        if (mColorTexture) {
+            gl::draw(mColorTexture, Rectf(10 + 330 * 0, 
+                                          10, 
+                                          330 * 1, 
+                                          250));
         }
-        
-        if ( mColorTexture ) {
-            gl::draw( mColorTexture );
-        }
-        
-        if ( mPreviewTexture ) {
-            gl::draw( mPreviewTexture );
+        if (mDepthTexture) {
+            gl::draw(mDepthTexture, Rectf(10 + 330 * 1, 
+                                          10, 
+                                          330 * 2, 
+                                          250 ));
+            
+            gl::draw(mBlobTexture, Rectf(10 + 330 * 2, 
+                                          10, 
+                                          330 * 3, 
+                                          250 ));        
         }
     }
+    
+    drawBlobsAndTracks(mBlobs, mTracks);
+    mGui->draw();
 }
 
-
-void ScheinrieseApp::mouseDown( MouseEvent event )
-{
-}
-
-bool ScheinrieseApp::showDebug( MouseEvent event )
-{ 
-    return false;
-}
-
-
-void ScheinrieseApp::keyDown( KeyEvent event )
-{
-    switch(event.getChar()) {				
+void ScheinrieseApp::keyDown( KeyEvent pEvent ) {
+    switch(pEvent.getChar()) {				
         case 'd': mGui->dump(); break;
         case 'l': mGui->load(getResourcePath(RES_SETTINGS)); break;
         case 's': mGui->save(getResourcePath(RES_SETTINGS)); break;
     }
-    switch(event.getCode()) {
-        case KeyEvent::KEY_ESCAPE: quit(); break;
-        case KeyEvent::KEY_SPACE: mGui->setEnabled(!mGui->isEnabled());
+    switch(pEvent.getCode()) {
+        case KeyEvent::KEY_ESCAPE:  setFullScreen( false ); quit(); break;
+        case KeyEvent::KEY_SPACE: mGui->setEnabled(!mGui->isEnabled());break;
     }
 }
 
-
-void ScheinrieseApp::findContours(gl::Texture theDepthImage)
-{    
-//ImageSourceRef theDepthImage) {
-    // images that opencv work on
-    cv::Mat input( toOcv( Channel8u( theDepthImage ) ) );
-    cv::Mat blurred;
-    cv::Mat thresholded;
-    cv::Mat output;
-    
-    cv::blur(input, blurred, cv::Size(mBlur, mBlur));
-    cv::threshold( blurred, thresholded, mThreshold, 255, CV_THRESH_BINARY);
-    
-    // store thresholded image in a texture
-    cv::cvtColor( thresholded, output, CV_GRAY2RGB );
-    mPreviewTexture = gl::Texture( fromOcv(output) );
-    
-    // find and store contours
-    mContours.clear();
-    cv::findContours(thresholded, mContours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);	
+void ScheinrieseApp::quit() {
+    delete mKinect;
+    delete mGui;
+    delete mFPSOut;
+    AppBasic::quit();
 }
 
-void ScheinrieseApp::findBlobs() {
-    CBlobResult blobs;
-    int i;
-    CBlob *currentBlob;
-    IplImage *original, *originalThr;
-    
-    // load an image and threshold it
-    original = cvLoadImage("pic1.png", 0);
-    cvThreshold( original, originalThr, 100, 0, 255, CV_THRESH_BINARY );
-    
-    // find non-white blobs in thresholded image
-    blobs = CBlobResult( originalThr, NULL, 255 );
-    // exclude the ones smaller than param2 value
-    blobs.Filter( blobs, B_EXCLUDE, CBlobGetArea(), B_LESS, param2 );
-    
-    // get mean gray color of biggest blob
-    CBlob biggestBlob;
-    CBlobGetMean getMeanColor( original );
-    double meanGray;
-    
-    blobs.GetNth( CBlobGetArea(), 0, biggestBlob );
-    meanGray = getMeanColor( biggestBlob );
-    
-    // display filtered blobs
-    cvMerge( originalThr, originalThr, originalThr, NULL, displayedImage );
-    
-    for (i = 0; i < blobs.GetNumBlobs(); i++ )
-    {
-        currentBlob = blobs.GetBlob(i);
-        currentBlob->FillBlob( displayedImage, CV_RGB(255,0,0));
+void ScheinrieseApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks) {
+    /* iterate results */
+    for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
+        
+        /* draw polygons */
+        const CvContourPolygon* polygon = cvConvertChainCodesToPolygon(&(*it).second->contour);
+        gl::color(1, 0, 0, 1);
+        for (int i=0; i<polygon->size(); i++) {
+            const CvPoint pointA = (*polygon)[i];
+            const CvPoint pointB = (*polygon)[(i + 1) % polygon->size()];
+            gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
+        }
+        
+        /* draw simplified polygons */
+        const CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, 10.);
+        gl::color(0, 1, 0, 1);
+        for (int i=0; i<sPolygon->size(); i++) {
+            const CvPoint pointA = (*sPolygon)[i];
+            const CvPoint pointB = (*sPolygon)[(i + 1) % sPolygon->size()];
+            gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
+        }
+        
+        /* draw contours */
+        const CvContourPolygon* cPolygon = cvPolygonContourConvexHull(sPolygon);
+        gl::color(0, 0, 1, 1);
+        for (int i=0; i<cPolygon->size(); i++) {
+            const CvPoint pointA = (*cPolygon)[i];
+            const CvPoint pointB = (*cPolygon)[(i + 1) % cPolygon->size()];
+            gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
+        }
+        
+        delete polygon;
+        delete sPolygon;
+        delete cPolygon;
+        
+        /* draw internal contours */
+        CvContoursChainCode mInternalContours = (*it).second->internalContours;
+        for (CvContoursChainCode::iterator mIterator = mInternalContours.begin(); mIterator != mInternalContours.end(); ++mIterator) {
+            const CvContourChainCode* mInteralContour = *mIterator;
+            const CvContourPolygon* mInternalPolygon = cvConvertChainCodesToPolygon(mInteralContour);
+            gl::color(1, 0, 1, 1);
+            for (int i=0; i<mInternalPolygon->size(); i++) {
+                CvPoint pointA = (*mInternalPolygon)[i];
+                CvPoint pointB = (*mInternalPolygon)[(i + 1) % mInternalPolygon->size()];
+                gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
+            }
+            delete mInternalPolygon;
+        }
+        
+        /* draw tracks */
+        gl::color(1, 0.5, 0, 1);
+//        console() << "### tracks : " << pTracks.size() << endl; 
+        for (CvTracks::const_iterator it=pTracks.begin(); it!=pTracks.end(); ++it) {
+            const CvTrack* mTrack = it->second;
+            if (mTrack && !mTrack->inactive) {
+                const Rectf& mRect = Rectf(mTrack->minx, mTrack->miny, mTrack->maxx, mTrack->maxy);
+                gl::drawStrokedRect(mRect);
+            }
+        }    
     }
 }
+
 
 CINDER_APP_BASIC( ScheinrieseApp, RendererGl )
