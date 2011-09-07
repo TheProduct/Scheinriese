@@ -1,3 +1,7 @@
 # Can ignore specific files
 .DS_Store
 .DS_Store
+
+.DS_Store
+
+xcode/.DS_Store

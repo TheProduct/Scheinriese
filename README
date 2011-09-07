@@ -1,0 +1,11 @@
+Scheinriese
+==
+
+to run this project you currently need to install opencv with macports.
+
+   1. install macports [ http://www.macports.org/ ]
+   2. run 'sudo port install opencv' in the terminal
+
+to successfully compile the project you additionally need to …
+
+   1. adjust the absolute CINDER_PATH in XCode

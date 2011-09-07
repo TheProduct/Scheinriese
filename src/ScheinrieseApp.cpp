@@ -10,6 +10,9 @@
 #include "Kinect.h"
 #include "cvblob.h"
 #include "SimpleGUI.h"
+#include "cinder/TriMesh.h"
+#include "cinder/Triangulate.h"
+
 
 
 using namespace ci;
@@ -33,7 +36,12 @@ public:
     void quit();
     
 private:
-    void drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks);
+    void drawBlobsAndTracks( const CvBlobs& pBlobs, const CvTracks& pTracks );
+    void drawDelaunay2D( const CvBlobs& pBlobs );
+    void drawTriangulatedBlobs(const CvBlobs & pBlobs);
+    void        draw( const TriMesh2d &mesh );
+    TriMesh2d   triangulateShape( const Shape2d & mShape );
+    Shape2d     convertPolygonToShape2d( const CvContourPolygon & polygon );
     
     /* properties */
     SimpleGUI *             mGui;
@@ -50,6 +58,7 @@ private:
     int                     BLOB_MIN_AREA;
     int                     BLOB_MAX_AREA;
     int                     BLOB_BLUR;
+    float                   BLOB_REDUCTION_MIN_DISTANCE;
 
     /* output */
     LabelControl *          mFPSOut;
@@ -66,10 +75,9 @@ private:
     /* blobs */
     CvBlobs                 mBlobs;
     CvTracks                mTracks;
-
 };
 
-void ScheinrieseApp::setup() {
+void ScheinrieseApp::setup() {    
     /* settings */
     mGui = new SimpleGUI(this);
     mGui->addParam("WINDOW_WIDTH", &WINDOW_WIDTH, 0, 2048, 640);
@@ -79,11 +87,10 @@ void ScheinrieseApp::setup() {
     mGui->addParam("FRAME_RATE", &FRAME_RATE, 1, 120, 30);
     mGui->addParam("KINECT_ANGLE", &KINECT_ANGLE, -31, 30, 20);
     mGui->addParam("BLOB_THRESHOLD", &BLOB_THRESHOLD, 1, 255, 127);
-//    mGui->addParam("BLOB_THRESHOLD_A", &BLOB_THRESHOLD_A, 1, 255, 127);
-//    mGui->addParam("BLOB_THRESHOLD_B", &BLOB_THRESHOLD_B, 1, 255, 127);
     mGui->addParam("BLOB_MIN_AREA", &BLOB_MIN_AREA, 1, 100000, 5000);
     mGui->addParam("BLOB_MAX_AREA", &BLOB_MAX_AREA, 1, 500000, 100000);
     mGui->addParam("BLOB_BLUR", &BLOB_BLUR, 0, 20, 7);
+    mGui->addParam("BLOB_REDUCTION_MIN_DISTANCE", &BLOB_REDUCTION_MIN_DISTANCE, 0, 20, 10);
     
     // output
     mGui->addSeparator();
@@ -125,6 +132,7 @@ void ScheinrieseApp::setup() {
 
 void ScheinrieseApp::mouseDown( MouseEvent event )
 {
+    Vec2f v;
 }
 
 void ScheinrieseApp::update() {
@@ -175,7 +183,6 @@ void ScheinrieseApp::update() {
             if (BLOB_BLUR >= 1) {
                 cvSmooth(mGreyImage, mGreyImage, CV_BLUR, BLOB_BLUR, BLOB_BLUR);
             }
-//            cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD_A, BLOB_THRESHOLD_B, CV_THRESH_TRUNC);
             cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD, 255, CV_THRESH_BINARY);
             
             /* track blobs */
@@ -203,8 +210,8 @@ void ScheinrieseApp::update() {
     }
 }
 
-void ScheinrieseApp::draw()
-{
+void ScheinrieseApp::draw() {
+    /* -- */
 	gl::clear( Color( 0, 0, 0 ) ); 
     
     /* gui */
@@ -228,10 +235,31 @@ void ScheinrieseApp::draw()
                                           250 ));        
         }
     }
-    
-    drawBlobsAndTracks(mBlobs, mTracks);
+
+    drawTriangulatedBlobs(mBlobs);
+    drawBlobsAndTracks(mBlobs, mTracks);  
+    drawDelaunay2D(mBlobs);
     mGui->draw();
 }
+
+void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
+    /* iterate results */
+    for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
+        
+        /* draw polygons */
+        const CvContourPolygon* polygon = cvConvertChainCodesToPolygon(&(*it).second->contour);
+        gl::color(1, 0, 0, 1);
+
+        /* draw triangulated polygons */
+        Shape2d mShape = convertPolygonToShape2d(*polygon);
+        gl::enableWireframe();
+        gl::color(1, 1, 1, 1);
+        TriMesh2d mMesh = triangulateShape(mShape);
+        draw(mMesh);
+        gl::disableWireframe();        
+    }
+}
+
 
 void ScheinrieseApp::keyDown( KeyEvent pEvent ) {
     switch(pEvent.getChar()) {				
@@ -252,6 +280,82 @@ void ScheinrieseApp::quit() {
     AppBasic::quit();
 }
 
+
+void draw_subdiv_edge(CvSubdiv2DEdge edge) {
+    CvSubdiv2DPoint* org_pt;
+    CvSubdiv2DPoint* dst_pt;
+    CvPoint2D32f org;
+    CvPoint2D32f dst;
+    CvPoint iorg, idst;
+    
+    org_pt = cvSubdiv2DEdgeOrg(edge);
+    dst_pt = cvSubdiv2DEdgeDst(edge);
+    
+    if( org_pt && dst_pt )
+    {
+        org = org_pt->pt;
+        dst = dst_pt->pt;
+        
+        iorg = cvPoint( cvRound( org.x ), cvRound( org.y ));
+        idst = cvPoint( cvRound( dst.x ), cvRound( dst.y ));
+        
+        gl::drawLine(Vec2f(idst.x, idst.y), Vec2f(iorg.x, iorg.y));
+    }
+}
+
+/* create and draw voronoi and delauny shapes */
+
+void draw_subdiv( CvSubdiv2D* subdiv ) {
+    CvSeqReader  reader;
+    int i, total = subdiv->edges->total;
+    int elem_size = subdiv->edges->elem_size;
+    
+    cvStartReadSeq( (CvSeq*)(subdiv->edges), &reader, 0 );
+    
+    for( i = 0; i < total; i++ ) {
+        CvQuadEdge2D* edge = (CvQuadEdge2D*)(reader.ptr);
+        
+        if( CV_IS_SET_ELEM( edge )) {
+            gl::color(1, 0, 0, 1);
+            draw_subdiv_edge((CvSubdiv2DEdge)edge + 1 );
+            gl::color(0, 1, 0, 1);
+            draw_subdiv_edge((CvSubdiv2DEdge)edge);
+        }
+        
+        CV_NEXT_SEQ_ELEM( elem_size, reader );
+    }
+}
+
+void ScheinrieseApp::drawDelaunay2D(const CvBlobs& pBlobs) {
+    for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {                  
+        /* draw simplified polygons */
+        const CvContourPolygon* sPolygon = cvSimplifyPolygon(cvConvertChainCodesToPolygon(&(*it).second->contour), BLOB_REDUCTION_MIN_DISTANCE);
+        
+        CvSubdiv2D* subdiv;
+        CvMemStorage* storage;
+        CvRect rect = { 0, 0, 640, 480 };
+        
+        storage = cvCreateMemStorage(0);
+        subdiv = cvCreateSubdiv2D( CV_SEQ_KIND_SUBDIV2D, 
+                                  sizeof(*subdiv),
+                                  sizeof(CvSubdiv2DPoint),
+                                  sizeof(CvQuadEdge2D),
+                                  storage );
+        cvInitSubdivDelaunay2D( subdiv, rect );
+
+        for (int i=0; i<sPolygon->size(); i++) {
+            const CvPoint p = (*sPolygon)[i];
+            CvPoint2D32f fp = cvPoint2D32f(p.x, p.y);
+            cvSubdivDelaunay2DInsert( subdiv, fp );
+            cvCalcSubdivVoronoi2D( subdiv );
+        }
+        draw_subdiv( subdiv );
+
+        cvReleaseMemStorage( &storage );
+    }
+}
+
+
 void ScheinrieseApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks) {
     /* iterate results */
     for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
@@ -266,7 +370,7 @@ void ScheinrieseApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& p
         }
         
         /* draw simplified polygons */
-        const CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, 10.);
+        const CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, BLOB_REDUCTION_MIN_DISTANCE);
         gl::color(0, 1, 0, 1);
         for (int i=0; i<sPolygon->size(); i++) {
             const CvPoint pointA = (*sPolygon)[i];
@@ -314,5 +418,52 @@ void ScheinrieseApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& p
     }
 }
 
+/* this should be in cinder  */
+void ScheinrieseApp::draw( const TriMesh2d & mesh ) {
+	glVertexPointer( 2, GL_FLOAT, 0, &(mesh.getVertices()[0]) );
+	glEnableClientState( GL_VERTEX_ARRAY );
+    
+	if( mesh.hasColorsRgb() ) {
+		glColorPointer( 3, GL_FLOAT, 0, &(mesh.getColorsRGB()[0]) );
+		glEnableClientState( GL_COLOR_ARRAY );
+	}
+	else if( mesh.hasColorsRgba() ) {
+		glColorPointer( 4, GL_FLOAT, 0, &(mesh.getColorsRGBA()[0]) );
+		glEnableClientState( GL_COLOR_ARRAY );
+	}
+	else 
+		glDisableClientState( GL_COLOR_ARRAY );	
+    
+	if( mesh.hasTexCoords() ) {
+		glTexCoordPointer( 2, GL_FLOAT, 0, &(mesh.getTexCoords()[0]) );
+		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+	}
+	else
+		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+	glDrawElements( GL_TRIANGLES, mesh.getNumIndices(), GL_UNSIGNED_INT, &(mesh.getIndices()[0]) );
+    
+	glDisableClientState( GL_VERTEX_ARRAY );
+	glDisableClientState( GL_NORMAL_ARRAY );
+	glDisableClientState( GL_COLOR_ARRAY );
+	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+}
+
+Shape2d ScheinrieseApp::convertPolygonToShape2d(const CvContourPolygon & polygon) {
+    Shape2d mShape;
+    const Vec2f v = Vec2f((polygon)[0].x, (polygon)[0].y);
+    mShape.moveTo(v);
+    for (int i=1; i<polygon.size(); i++) {
+        const Vec2f v = Vec2f((polygon)[i].x, (polygon)[i].y);
+        mShape.lineTo(v);
+    }  
+    return mShape;
+}
+
+TriMesh2d ScheinrieseApp::triangulateShape(const Shape2d & mShape) {
+    float mPrecision;
+    mPrecision = 1.0f;
+    TriMesh2d mesh = Triangulator( mShape, mPrecision ).calcMesh( Triangulator::WINDING_ODD );
+    return mesh;
+}
 
 CINDER_APP_BASIC( ScheinrieseApp, RendererGl )
