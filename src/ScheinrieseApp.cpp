@@ -26,6 +26,64 @@ const std::string       RES_SETTINGS = "settings.txt";
 const int               CAMERA_WIDTH = 640;
 const int               CAMERA_HEIGHT = 480;
 
+
+class KinectData {
+    
+    // from: http://social.msdn.microsoft.com/Forums/en-US/kinectsdknuiapi/thread/250b5e2d-5e0e-4e7e-b222-4c85278a02f2
+    
+public:
+    //    DWORD unk1;
+    //    DWORD unk2;
+    short* TDepth; // 2048 depth correction [as 1/16 pixels] for xC
+    float kx[10]; // coefs for x^3, y^3, x^2*y, x*y^2, x^2, y^2, x*y, x, y, 1
+    float ky[10]; // coefs for x^3, y^3, x^2*y, x*y^2, x^2, y^2, x*y, x, y, 1
+    
+    //    KinectData(const KinectData& kd) {
+    //        memcpy(this,&kd,sizeof(*this));
+    //        TDepth=new SHORT[2048];
+    //        memcpy(TDepth,kd.TDepth,2048*sizeof(SHORT));
+    //    }
+    KinectData() {}
+    
+    ~KinectData() {
+        delete[] TDepth; 
+    }
+    
+    //    static KinectData* GetFromSDK() // works only for SDK Beta (MSRKINECTNUI.DLL 1.0.0.11) ! {
+    //        return *(KinectData**)(*(DWORD*)(((BYTE*)NuiImageGetColorPixelCoordinatesFromDepthPixel)+0x22)+0x154C);
+    //    }
+    
+    // GetColor640CoordFromDepth320 gives same output as NuiImageGetColorPixelCoordinatesFromDepthPixel
+    void GetColor640CoordFromDepth320(long xD, long yD, int zD, long *pxC, long *pyC) const {
+        GetColor640CoordFromDepth640(xD<<1, yD<<1, zD, pxC, pyC);
+    }
+    
+    
+    void GetColor640CoordFromDepth640(long xD, long yD, int zD, long *pxC, long *pyC) const {
+        const int NUI_IMAGE_PLAYER_INDEX_SHIFT = 3;
+        zD >>= NUI_IMAGE_PLAYER_INDEX_SHIFT;
+        float dxDf=float(639-320-xD), dyDf=float(yD-256);   // why 256 ? ask Kinect/MS ...
+        float Sx=kx[9]+dyDf*kx[8]+dxDf*kx[7], Sy=ky[9]+dyDf*ky[8]+dxDf*ky[7];
+        float v=dyDf*dyDf;
+        Sx+=kx[5]*v; Sy+=ky[5]*v;
+        v*=dyDf;
+        Sx+=kx[1]*v; Sy+=ky[1]*v;
+        v=dxDf*dyDf;
+        Sx+=kx[6]*v; Sy+=ky[6]*v;
+        v*=dyDf;
+        Sx+=kx[3]*v; Sy+=ky[3]*v;
+        v=dxDf*dxDf;
+        Sx+=kx[4]*v; Sy+=ky[4]*v;
+        dyDf*=v;
+        Sx+=kx[2]*dyDf; Sy+=ky[2]*dyDf;
+        v*=dxDf;
+        Sx+=kx[0]*v; Sy+=ky[0]*v;
+        min(10, 20);
+        *pxC=xD-long(Sx)-(TDepth[min(zD,2047)]>>4); // round before sub : loosing precision !
+        *pyC=long(Sy)+yD;
+    }
+};
+
 class ScheinrieseApp : public AppBasic {
 public:
 	void setup();
@@ -39,6 +97,7 @@ private:
     void drawBlobsAndTracks( const CvBlobs& pBlobs, const CvTracks& pTracks );
     void drawDelaunay2D( const CvBlobs& pBlobs );
     void drawTriangulatedBlobs(const CvBlobs & pBlobs);
+    void drawCameraImages();
     void        draw( const TriMesh2d &mesh );
     TriMesh2d   triangulateShape( const Shape2d & mShape );
     Shape2d     convertPolygonToShape2d( const CvContourPolygon & polygon );
@@ -110,7 +169,7 @@ void ScheinrieseApp::setup() {
 	console() << "+++ found " << Kinect::getNumDevices() << " kinect(s)." << std::endl;
 	if (Kinect::getNumDevices() >= 1) {
 		mKinect = new Kinect( Kinect::Device(0) );
-		mKinect->setTilt(0);
+        mKinect->setLedColor( Kinect::LED_BLINK_RED_YELLOW );
 //        mKinect->setVideoInfrared();
         console() << "+++ waiting for kinect ..." << endl;
         while(!mKinect->checkNewDepthFrame()) {}
@@ -207,41 +266,79 @@ void ScheinrieseApp::update() {
             cvReleaseImage(&mGreyImage);
             cvReleaseImage(&mLabelImg);
         }
+//        
+//        long mX, mY;
+//        KinectData mData;
+//        mData.GetColor640CoordFromDepth640(0, 0, 0, &mX, &mY);
+//        console() << "out: " << mX << ", " << mY;
     }
 }
 
 void ScheinrieseApp::draw() {
     /* -- */
-	gl::clear( Color( 0, 0, 0 ) ); 
+	gl::clear( Color( 1, 1, 1) ); 
     
     /* gui */
+    gl::color(1, 1, 1, 1);
     if (mGui->isEnabled()) {
-        gl::color(1, 1, 1, 1);
-        if (mColorTexture) {
-            gl::draw(mColorTexture, Rectf(10 + 330 * 0, 
-                                          10, 
-                                          330 * 1, 
-                                          250));
-        }
-        if (mDepthTexture) {
-            gl::draw(mDepthTexture, Rectf(10 + 330 * 1, 
-                                          10, 
-                                          330 * 2, 
-                                          250 ));
-            
-            gl::draw(mBlobTexture, Rectf(10 + 330 * 2, 
-                                          10, 
-                                          330 * 3, 
-                                          250 ));        
-        }
+        drawCameraImages();
+    }
+
+    /* normalize texture coordinates */
+    Vec2f mNormalizeScale = Vec2f(1.0 / float(640), 1.0 / float(480));
+//    Vec2f mNormalizeScale = Vec2f(1.0 / float(WINDOW_WIDTH), 1.0 / float(WINDOW_HEIGHT));
+    glMatrixMode(GL_TEXTURE);
+    glPushMatrix();
+    glScalef(mNormalizeScale.x, mNormalizeScale.y, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+
+    bool DRAW_DEBUG = false;
+    if (DRAW_DEBUG) {
+        gl::enableWireframe();
+    } else {
+        mColorTexture.enableAndBind();
     }
 
     drawTriangulatedBlobs(mBlobs);
-    drawBlobsAndTracks(mBlobs, mTracks);  
-    drawDelaunay2D(mBlobs);
+//    drawBlobsAndTracks(mBlobs, mTracks);  
+//    drawDelaunay2D(mBlobs);
+
+    if (DRAW_DEBUG) {
+        gl::disableWireframe();        
+    } else {
+        mColorTexture.disable();
+    }
+
+    /* restore texture coordinates */
+    glMatrixMode(GL_TEXTURE);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    /* gui */
     mGui->draw();
 }
 
+void ScheinrieseApp::drawCameraImages() {
+    if (mColorTexture) {
+        gl::draw(mColorTexture, Rectf(10 + 330 * 0, 
+                                      10, 
+                                      330 * 1, 
+                                      250));
+    }
+    if (mDepthTexture) {
+        gl::draw(mDepthTexture, Rectf(10 + 330 * 1, 
+                                      10, 
+                                      330 * 2, 
+                                      250 ));
+        
+        gl::draw(mBlobTexture, Rectf(10 + 330 * 2, 
+                                     10, 
+                                     330 * 3, 
+                                     250 ));        
+    }
+}
+
+    
 void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
     /* iterate results */
     for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
@@ -252,11 +349,12 @@ void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
 
         /* draw triangulated polygons */
         Shape2d mShape = convertPolygonToShape2d(*polygon);
-        gl::enableWireframe();
         gl::color(1, 1, 1, 1);
         TriMesh2d mMesh = triangulateShape(mShape);
+        for (int i=0; i < mMesh.getVertices().size(); ++i) {
+            mMesh.appendTexCoord(Vec2f(mMesh.getVertices()[i]));
+        }
         draw(mMesh);
-        gl::disableWireframe();        
     }
 }
 
@@ -422,7 +520,7 @@ void ScheinrieseApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& p
 void ScheinrieseApp::draw( const TriMesh2d & mesh ) {
 	glVertexPointer( 2, GL_FLOAT, 0, &(mesh.getVertices()[0]) );
 	glEnableClientState( GL_VERTEX_ARRAY );
-    
+
 	if( mesh.hasColorsRgb() ) {
 		glColorPointer( 3, GL_FLOAT, 0, &(mesh.getColorsRGB()[0]) );
 		glEnableClientState( GL_COLOR_ARRAY );
@@ -456,6 +554,7 @@ Shape2d ScheinrieseApp::convertPolygonToShape2d(const CvContourPolygon & polygon
         const Vec2f v = Vec2f((polygon)[i].x, (polygon)[i].y);
         mShape.lineTo(v);
     }  
+    mShape.close();
     return mShape;
 }
 
@@ -465,5 +564,6 @@ TriMesh2d ScheinrieseApp::triangulateShape(const Shape2d & mShape) {
     TriMesh2d mesh = Triangulator( mShape, mPrecision ).calcMesh( Triangulator::WINDING_ODD );
     return mesh;
 }
+
 
 CINDER_APP_BASIC( ScheinrieseApp, RendererGl )
