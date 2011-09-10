@@ -19,6 +19,8 @@
 		5323E6B60EAFCA7E003A9687 /* QTKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5323E6B50EAFCA7E003A9687 /* QTKit.framework */; };
 		53E3CDFC0E86099300238D2B /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 53E3CDFB0E86099300238D2B /* Carbon.framework */; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
+		9529A26C141B855500C163C4 /* passThru.vs in Resources */ = {isa = PBXBuildFile; fileRef = 9529A26A141B855500C163C4 /* passThru.vs */; };
+		9529A26D141B855500C163C4 /* posterizer.fs in Resources */ = {isa = PBXBuildFile; fileRef = 9529A26B141B855500C163C4 /* posterizer.fs */; };
 		9531773D1413C96200F15AA4 /* SimpleGUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9531773C1413C96200F15AA4 /* SimpleGUI.cpp */; };
 		9531773F1413CAD900F15AA4 /* settings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9531773E1413CAD900F15AA4 /* settings.txt */; };
 		953177971413CF6F00F15AA4 /* pf_tempesta_seven.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 953177961413CF6F00F15AA4 /* pf_tempesta_seven.ttf */; };
@@ -45,6 +47,8 @@
 		53E3CDFB0E86099300238D2B /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = /System/Library/Frameworks/Carbon.framework; sourceTree = "<absolute>"; };
 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8D1107320486CEB800E47090 /* Scheinriese.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scheinriese.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9529A26A141B855500C163C4 /* passThru.vs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = passThru.vs; path = ../resources/shader/passThru.vs; sourceTree = "<group>"; };
+		9529A26B141B855500C163C4 /* posterizer.fs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = posterizer.fs; path = ../resources/shader/posterizer.fs; sourceTree = "<group>"; };
 		953177371413C93600F15AA4 /* Resources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Resources.h; path = ../include/Resources.h; sourceTree = "<group>"; };
 		9531773B1413C96200F15AA4 /* SimpleGUI.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SimpleGUI.h; path = ../include/SimpleGUI.h; sourceTree = "<group>"; };
 		9531773C1413C96200F15AA4 /* SimpleGUI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SimpleGUI.cpp; path = ../src/SimpleGUI.cpp; sourceTree = "<group>"; };
@@ -145,6 +149,8 @@
 		29B97317FDCFA39411CA2CEA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				9529A26A141B855500C163C4 /* passThru.vs */,
+				9529A26B141B855500C163C4 /* posterizer.fs */,
 				953177961413CF6F00F15AA4 /* pf_tempesta_seven.ttf */,
 				9531773E1413CAD900F15AA4 /* settings.txt */,
 				8D1107310486CEB800E47090 /* Info.plist */,
@@ -238,6 +244,8 @@
 				00CCAF15116A9FEE008396D5 /* CinderApp.icns in Resources */,
 				9531773F1413CAD900F15AA4 /* settings.txt in Resources */,
 				953177971413CF6F00F15AA4 /* pf_tempesta_seven.ttf in Resources */,
+				9529A26C141B855500C163C4 /* passThru.vs in Resources */,
+				9529A26D141B855500C163C4 /* posterizer.fs in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

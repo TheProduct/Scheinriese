@@ -69,6 +69,7 @@ private:
     float                   BLOB_SCALE_DEPTH_CLAMP_MIN;
     float                   BLOB_SCALE_DEPTH_CLAMP_MAX;
     float                   BLOB_SCALE_EXPONENT;
+    float                   BLOB_ALPHA_EDGE_BLEND;
     float                   RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_X;
     float                   RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_Y;
     float                   RGB_DEPTH_TEXTURE_ALIGN_SCALE;
@@ -76,7 +77,7 @@ private:
     float                   BACKGROUND_SCALE_Y;
     float                   BACKGROUND_TRANSLATE_X;
     float                   BACKGROUND_TRANSLATE_Y;
-    
+    int                     ENABLE_SHADER;  
 
     /* output */
     LabelControl *          mFPSOut;
@@ -95,6 +96,9 @@ private:
     CvBlobs                 mBlobs;
     CvTracks                mTracks;
     vector<BlobDistanceMap> mAverageBlobDistanceMap;
+
+    /* shader */
+    gl::GlslProg            mShader;
 };
 
 void ScheinrieseApp::setup() { 
@@ -127,6 +131,8 @@ void ScheinrieseApp::setup() {
     mGui->addParam("BLOB_SCALE_DEPTH_CLAMP_MIN", &BLOB_SCALE_DEPTH_CLAMP_MIN, 0, 255, 30);
     mGui->addParam("BLOB_SCALE_DEPTH_CLAMP_MAX", &BLOB_SCALE_DEPTH_CLAMP_MAX, 0, 255, 142);
     mGui->addParam("BLOB_SCALE_EXPONENT", &BLOB_SCALE_EXPONENT, 0, 10, 4);
+    mGui->addParam("BLOB_ALPHA_EDGE_BLEND", &BLOB_ALPHA_EDGE_BLEND, 1, 100, 2);
+    mGui->addParam("ENABLE_SHADER", &ENABLE_SHADER, 0, 1, 1);
     
     // output
     mGui->addSeparator();
@@ -174,6 +180,18 @@ void ScheinrieseApp::setup() {
     if (FULLSCREEN) {
         hideCursor();
     }
+    
+    /* shader */
+    try {
+		mShader = gl::GlslProg( loadResource( RES_PASSTHRU_VERT ), loadResource( RES_BLUR_FRAG ) );
+	}
+	catch( gl::GlslProgCompileExc &exc ) {
+		console() << "Shader compile error: " << std::endl;
+		console() << exc.what();
+	}
+	catch( ... ) {
+		console() << "Unable to load shader" << std::endl;
+	}
 }
 
 void ScheinrieseApp::prepareSettings( Settings *settings ) {
@@ -245,7 +263,6 @@ void ScheinrieseApp::update() {
             IplImage* mLabelImg = cvCreateImage(cvGetSize(mGreyImage), IPL_DEPTH_LABEL, 1);
             cvLabel(mGreyImage, mLabelImg, mBlobs);
             
-            
             /* write image to texture */
             mDepthTexture.update(mSurface);
             if (mGui->isEnabled()) {
@@ -264,6 +281,7 @@ void ScheinrieseApp::update() {
             cvReleaseImage(&mLabelImg);
         }
         if ( mNewDepthFrame ) {
+            // TODO maybe reject blobs with in human dimensions
             getAverageBlobDistanceMap(mBlobs, mAverageBlobDistanceMap);
         }
     }
@@ -272,7 +290,20 @@ void ScheinrieseApp::update() {
 void ScheinrieseApp::draw() {
     /* -- */
 	gl::clear( Color( 1, 1, 1 ) ); 
-        
+     
+    /* shader */
+    // TODO make this more opt'd
+    if (ENABLE_SHADER) {
+        mShader.bind();
+        const int STEPS = 8;
+        float mThresholds[STEPS];// = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
+        for (int i=0; i < STEPS; ++i) {
+            mThresholds[i] = float(i) / float(STEPS - 1);
+        }
+        mShader.uniform("thresholds", mThresholds, 16);   
+        mShader.uniform( "tex0", 0 );
+    }
+    
     /* draw image to as background */
     // TODO this should be a static background image
     gl::color(1, 1, 1, 1);
@@ -325,6 +356,11 @@ void ScheinrieseApp::draw() {
     glMatrixMode(GL_TEXTURE);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
+    
+    /* shader */
+    if (ENABLE_SHADER) {
+        mShader.unbind();
+    }
 
     /* gui */
     if (mGui->isEnabled()) {
@@ -383,6 +419,15 @@ void ScheinrieseApp::getAverageBlobDistanceMap(const CvBlobs & pBlobs, vector<Bl
     }
 }
 
+float edge_fade(float x, float n) {
+    float y = x;
+    y -= 0.5;
+    y *= 2;
+    y = abs(pow(y, n));
+    y *= -1;
+    y += 1;
+    return y;
+}
     
 void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
     /* iterate results */
@@ -418,7 +463,12 @@ void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
         mScale = pow(mScale, BLOB_SCALE_EXPONENT);
         mScale *= BLOB_SCALE_MAX - BLOB_SCALE_MIN;
         mScale += BLOB_SCALE_MIN;
+        
+//        console() << i << ": " << mBlob.centroid.y << endl;
+//        console() << i << ": " << (mBlob.miny + (mBlob.maxy - mBlob.miny) / 2) << endl;
 
+        const float mMiddle = (mBlob.miny + (mBlob.maxy - mBlob.miny) / 2);//mBlob.centroid.y;        
+        
         /* adjust postion */
         float mOffset = 0.0;
         mOffset = abs(float(mBlob.maxy - mBlob.miny));
@@ -428,16 +478,18 @@ void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
         } else {
             /* fix blob to bottom of screen */
             // DOESN T WORK
-            mOffset = ( CAMERA_HEIGHT - mBlob.centroid.y ) * mScale - mOffset / 2;
+            mOffset = ( CAMERA_HEIGHT - mMiddle ) * mScale - mOffset / 2;
         }
         
+        // TODO clamp alpha at beginning and end.
+        mAlpha = edge_fade(1.0, BLOB_ALPHA_EDGE_BLEND);
         gl::color(1, 1, 1, mAlpha);
         
         glPushMatrix();
-        glTranslatef(mBlob.centroid.x, mBlob.centroid.y, 0.0);
+        glTranslatef(mBlob.centroid.x, mMiddle, 0.0);
         glTranslatef(0.0, mOffset, 0.0);
         glScalef(mScale, mScale, 1);
-        glTranslatef(-mBlob.centroid.x, -mBlob.centroid.y, 0.0);
+        glTranslatef(-mBlob.centroid.x, -mMiddle, 0.0);
         draw(mMesh);
         glPopMatrix();
         
