@@ -38,6 +38,8 @@ public:
     void keyDown( KeyEvent pEvent );
     void quit();
     void prepareSettings( Settings *settings );
+    void mouseMove( MouseEvent event ) {};
+    void mouseDrag( MouseEvent event ) {};
     
 private:
     void        DEBUGdrawBlobsAndTracks( const CvBlobs& pBlobs, const CvTracks& pTracks );
@@ -48,6 +50,7 @@ private:
     TriMesh2d   triangulateShape( const Shape2d & mShape );
     Shape2d     convertPolygonToShape2d( const CvContourPolygon & polygon );
     void        getAverageBlobDistanceMap(const CvBlobs & pBlobs, vector<BlobDistanceMap> & pAverageBlobDistanceMap);
+    void updateBackgroundImage();
 
     
     /* properties */
@@ -78,13 +81,14 @@ private:
     float                   BACKGROUND_TRANSLATE_X;
     float                   BACKGROUND_TRANSLATE_Y;
     int                     ENABLE_SHADER;  
+    float                   BACKGROUND_SUBSTRACTION_INTERVAL;
+    int                     TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE;
+    float                   TRACK_MATCHING_DISTANCE;
 
     /* output */
     LabelControl *          mFPSOut;
     LabelControl *          mFacesOut;
-    
-    double                  mTime;
-    
+        
     /* kinect */
     Kinect *                mKinect;
 	gl::Texture             mDepthTexture;
@@ -99,17 +103,23 @@ private:
 
     /* shader */
     gl::GlslProg            mShader;
+
+    /* background */
+    IplImage*               mGreyBackgroundImage;
+    bool                    mHackFirstFrame;
+    double                  mTime;
+    float                   mBackgroundSubstractionCounter;
 };
 
 void ScheinrieseApp::setup() { 
     
     console() << "+++ Scheinriese (PID " << getpid() << ")." << endl;
     
-    try {
-    }
-    catch( ... ) {
-    }
-    
+    /* initializing variables */
+    mHackFirstFrame = true;
+    mBackgroundSubstractionCounter = 0.0;
+    mTime = 0.0;
+
     /* settings */
     mGui->addParam("BACKGROUND_SCALE_X", &BACKGROUND_SCALE_X, 1.0, 1.15, 1.1132);
     mGui->addParam("BACKGROUND_SCALE_Y", &BACKGROUND_SCALE_Y, 1.0, 1.1, 1.0764);
@@ -133,6 +143,9 @@ void ScheinrieseApp::setup() {
     mGui->addParam("BLOB_SCALE_EXPONENT", &BLOB_SCALE_EXPONENT, 0, 10, 4);
     mGui->addParam("BLOB_ALPHA_EDGE_BLEND", &BLOB_ALPHA_EDGE_BLEND, 1, 100, 2);
     mGui->addParam("ENABLE_SHADER", &ENABLE_SHADER, 0, 1, 1);
+    mGui->addParam("BACKGROUND_SUBSTRACTION_INTERVAL", &BACKGROUND_SUBSTRACTION_INTERVAL, 0, 3600, 600);
+    mGui->addParam("TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE", &TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE, 0, 240, 30);
+    mGui->addParam("TRACK_MATCHING_DISTANCE", &TRACK_MATCHING_DISTANCE, 0, 50, 5);
     
     // output
     mGui->addSeparator();
@@ -167,6 +180,7 @@ void ScheinrieseApp::setup() {
         while(!mKinect->checkNewDepthFrame()) {}
         mDepthTexture = mKinect->getDepthImage();
         DEBUGmBlobTexture = mKinect->getDepthImage();
+        updateBackgroundImage();
         while(!mKinect->checkNewVideoFrame()) {}
         mColorTexture = mKinect->getVideoImage();
         mColorBackgroundTexture = mKinect->getVideoImage();     
@@ -210,8 +224,6 @@ void ScheinrieseApp::prepareSettings( Settings *settings ) {
 }
 
 void ScheinrieseApp::update() {
-    double mDeltaTime = getElapsedSeconds() - mTime;
-    mTime = getElapsedSeconds();
     {
         stringstream mStr;
         mStr << "FPS: " << getAverageFps();
@@ -242,6 +254,7 @@ void ScheinrieseApp::update() {
             
             /* convert to grey scale */
             // TODO maybe we need background substraction
+            // TODO the iteration below is quite useless
             IplImage* mGreyImage = cvCreateImage(cvSize(mSurface.getWidth(), mSurface.getHeight()), IPL_DEPTH_8U, 1);
             int i = 0;
             while( iter.line() ) {
@@ -251,6 +264,9 @@ void ScheinrieseApp::update() {
                 }
             }
             
+            /* background subtraction */
+            cvAbsDiff(mGreyImage, mGreyBackgroundImage, mGreyImage);
+            
             /* threshold */
             if (BLOB_BLUR >= 1) {
                 cvSmooth(mGreyImage, mGreyImage, CV_BLUR, BLOB_BLUR, BLOB_BLUR);
@@ -259,7 +275,7 @@ void ScheinrieseApp::update() {
             
             /* track blobs */
             cvReleaseBlobs(mBlobs);
-            cvReleaseTracks(mTracks);
+//            cvReleaseTracks(mTracks);
             IplImage* mLabelImg = cvCreateImage(cvGetSize(mGreyImage), IPL_DEPTH_LABEL, 1);
             cvLabel(mGreyImage, mLabelImg, mBlobs);
             
@@ -273,8 +289,9 @@ void ScheinrieseApp::update() {
             cvFilterByArea(mBlobs, BLOB_MIN_AREA, BLOB_MAX_AREA);
 
             // TODO do something with tracks
-            cvUpdateTracks(mBlobs, mTracks, 5., 10);            
-            // CvTrack.lifetime
+            cvUpdateTracks(mBlobs, mTracks, 
+                           TRACK_MATCHING_DISTANCE, 
+                           TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE);            
             
             /* clean up */
             cvReleaseImage(&mGreyImage);
@@ -284,6 +301,32 @@ void ScheinrieseApp::update() {
             // TODO maybe reject blobs with in human dimensions
             getAverageBlobDistanceMap(mBlobs, mAverageBlobDistanceMap);
         }
+    }
+    
+    /* background subtraction  */
+    double mDeltaTime = getElapsedSeconds() - mTime;
+    mTime = getElapsedSeconds();
+    mBackgroundSubstractionCounter += mDeltaTime;
+    if (mBackgroundSubstractionCounter > BACKGROUND_SUBSTRACTION_INTERVAL) {
+        mBackgroundSubstractionCounter = 0.0;
+        // TODO forcing update. this needs to be better ...
+        mColorBackgroundTexture.update(mKinect->getVideoImage());
+        updateBackgroundImage();
+//        if (mBlobs.size() == 0) {
+//            mColorBackgroundTexture.update(mKinect->getVideoImage());
+//            updateBackgroundImage();
+//        } else {
+//            // TODO ignore dead tracks -> mTracks
+//            console() << "+++ didn t perform background image update, because there was a blob." << endl;
+////            for (CvTracks::iterator it = mTracks.begin(); it!=mTracks.end(); it++) {
+////                CvTrack mTrack = *((*it).second);
+////                console() << mTrack.id 
+////                << " - " << mTrack.lifetime
+////                << " - " << mTrack.active
+////                << " - " << mTrack.inactive
+////                << endl;
+////            }
+//        }
     }
 }
 
@@ -482,7 +525,7 @@ void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
         }
         
         // TODO clamp alpha at beginning and end.
-        mAlpha = edge_fade(1.0, BLOB_ALPHA_EDGE_BLEND);
+        mAlpha = edge_fade(mAlpha, BLOB_ALPHA_EDGE_BLEND);
         gl::color(1, 1, 1, mAlpha);
         
         glPushMatrix();
@@ -687,11 +730,37 @@ TriMesh2d ScheinrieseApp::triangulateShape(const Shape2d & mShape) {
     return mesh;
 }
 
+void ScheinrieseApp::updateBackgroundImage() {
+    if (mKinect) {
+        if (mGreyBackgroundImage) {
+            if (mHackFirstFrame) {
+                console() << "+++ HACK / don t release image on first frame." << endl;
+                mHackFirstFrame = false;
+            } else {
+                cvReleaseImage(&mGreyBackgroundImage);
+            }
+        }
+        console() << "+++ capturing new background depth image" << endl;
+        const Surface mSurface = mKinect->getDepthImage();
+        Surface::ConstIter iter = mSurface.getIter();
+        mGreyBackgroundImage = cvCreateImage(cvSize(mSurface.getWidth(), mSurface.getHeight()), IPL_DEPTH_8U, 1);
+        int i = 0;
+        while( iter.line() ) {
+            while( iter.pixel() ) {
+                mGreyBackgroundImage->imageData[i] = iter.r();
+                i++;
+            }
+        }    
+    }
+}
+
 void ScheinrieseApp::keyDown( KeyEvent pEvent ) {
     switch(pEvent.getChar()) {				
         case 'b':         
             if (mKinect) {
                 mColorBackgroundTexture.update(mKinect->getVideoImage());
+                /* background subtraction */
+                updateBackgroundImage();
             }
             break;
         case 'd': mGui->dump(); break;
@@ -708,6 +777,7 @@ void ScheinrieseApp::keyDown( KeyEvent pEvent ) {
 
 void ScheinrieseApp::quit() {
     try {
+        // TODO find reliable way to quit
         console() << "### EXIT .";
         mKinect->stop();
         console() << ".";
