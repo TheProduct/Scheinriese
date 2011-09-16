@@ -1,3 +1,5 @@
+// TODO: 'Mac OS X Lion – Disable app resume and window restore functionality' System Preferences -> General -> Remove the check from “Restore windows when quitting and re-opening apps”.
+
 #include "Resources.h"
 
 #include "cinder/app/AppBasic.h"
@@ -13,6 +15,7 @@
 #include "cinder/TriMesh.h"
 #include "cinder/Triangulate.h"
 
+#include <ApplicationServices/ApplicationServices.h>
 
 using namespace ci;
 using namespace ci::app;
@@ -27,8 +30,17 @@ const int               CAMERA_HEIGHT = 480;
 
 struct BlobDistanceMap {
     float           average_distance;
+    Vec2f           average_position;
+    Vec2f           average_min;
+    Vec2f           average_max;
     CvBlob          blob;
+    CvTrack         track;
 };
+
+/* switch resolution */
+bool MyDisplaySwitchToMode (CGDirectDisplayID display, CFDictionaryRef mode);
+int switch_resolution (int pWidth, int pHeight, double pRefreshRate);
+
 
 class ScheinrieseApp : public AppBasic {
 public:
@@ -44,13 +56,15 @@ public:
 private:
     void        DEBUGdrawBlobsAndTracks( const CvBlobs& pBlobs, const CvTracks& pTracks );
     void        drawDelaunay2D( const CvBlobs& pBlobs );
-    void        drawTriangulatedBlobs(const CvBlobs & pBlobs);
+//    void        drawTriangulatedBlobs(const CvBlobs & pBlobs);
+    void        drawTriangulatedBlobs(const CvBlobs & pBlobs, const CvTracks & pTracks);
     void        drawCameraImages();
     void        draw( const TriMesh2d &mesh );
     TriMesh2d   triangulateShape( const Shape2d & mShape );
     Shape2d     convertPolygonToShape2d( const CvContourPolygon & polygon );
-    void        getAverageBlobDistanceMap(const CvBlobs & pBlobs, vector<BlobDistanceMap> & pAverageBlobDistanceMap);
-    void updateBackgroundImage();
+//    void        getAverageBlobDistanceMap(const CvBlobs & pBlobs, vector<BlobDistanceMap> & pAverageBlobDistanceMap);
+    void        getAverageBlobDistanceMap(const CvBlobs & pBlobs, const CvTracks & pTracks, vector<BlobDistanceMap> & pAverageBlobDistanceMap);
+    void        updateBackgroundImage();
 
     
     /* properties */
@@ -72,7 +86,9 @@ private:
     float                   BLOB_SCALE_DEPTH_CLAMP_MIN;
     float                   BLOB_SCALE_DEPTH_CLAMP_MAX;
     float                   BLOB_SCALE_EXPONENT;
+    float                   BLOB_SCALE_HEIGHT_OFFSET;
     float                   BLOB_ALPHA_EDGE_BLEND;
+    float                   BLOB_SCALE_SCALE;
     float                   RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_X;
     float                   RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_Y;
     float                   RGB_DEPTH_TEXTURE_ALIGN_SCALE;
@@ -80,14 +96,24 @@ private:
     float                   BACKGROUND_SCALE_Y;
     float                   BACKGROUND_TRANSLATE_X;
     float                   BACKGROUND_TRANSLATE_Y;
+    float                   BACKGROUND_IMAGE_ALPHA;
     int                     ENABLE_SHADER;  
     float                   BACKGROUND_SUBSTRACTION_INTERVAL;
     int                     TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE;
     float                   TRACK_MATCHING_DISTANCE;
+    float                   MASK_LEFT_TOP;
+    float                   MASK_LEFT_BOTTOM;
+    float                   MASK_RIGHT_TOP;
+    float                   MASK_RIGHT_BOTTOM;
+    float                   MASK_CIRCLE_RADIUS;
+    int                     MASK_CIRCLE_X_POS;
+    int                     MASK_CIRCLE_Y_POS;
 
+    
     /* output */
     LabelControl *          mFPSOut;
-    LabelControl *          mFacesOut;
+    LabelControl *          mBlobsOut;
+    LabelControl *          mTracksOut;
         
     /* kinect */
     Kinect *                mKinect;
@@ -109,6 +135,7 @@ private:
     bool                    mHackFirstFrame;
     double                  mTime;
     float                   mBackgroundSubstractionCounter;
+    int                     mIgnoreBackgroundUpdate;
 };
 
 void ScheinrieseApp::setup() { 
@@ -119,15 +146,20 @@ void ScheinrieseApp::setup() {
     mHackFirstFrame = true;
     mBackgroundSubstractionCounter = 0.0;
     mTime = 0.0;
-
+    mIgnoreBackgroundUpdate = 0;
+    
     /* settings */
     mGui->addParam("BACKGROUND_SCALE_X", &BACKGROUND_SCALE_X, 1.0, 1.15, 1.1132);
     mGui->addParam("BACKGROUND_SCALE_Y", &BACKGROUND_SCALE_Y, 1.0, 1.1, 1.0764);
-    mGui->addParam("BACKGROUND_TRANSLATE_X", &BACKGROUND_TRANSLATE_X, -30, 0, -24);
-    mGui->addParam("BACKGROUND_TRANSLATE_Y", &BACKGROUND_TRANSLATE_Y, -70, 0, -64.32);
+    mGui->addParam("BACKGROUND_TRANSLATE_X", &BACKGROUND_TRANSLATE_X, -200, 0, 200);
+    mGui->addParam("BACKGROUND_TRANSLATE_Y", &BACKGROUND_TRANSLATE_Y, -200, 0, 200);
+    mGui->addParam("BACKGROUND_IMAGE_ALPHA", &BACKGROUND_IMAGE_ALPHA, 0, 1, 5);
     mGui->addParam("RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_X", &RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_X, 0, 20, 7.2);
     mGui->addParam("RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_Y", &RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_Y, 0, 45, 37.6);
     mGui->addParam("RGB_DEPTH_TEXTURE_ALIGN_SCALE", &RGB_DEPTH_TEXTURE_ALIGN_SCALE, 0.9, 1.0, 0.925);
+    mGui->addParam("BLOB_POLYGON_REDUCTION_MIN_DISTANCE", &BLOB_POLYGON_REDUCTION_MIN_DISTANCE, 0, 20, 10);
+    mGui->addParam("TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE", &TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE, 0, 240, 30);
+    mGui->addParam("TRACK_MATCHING_DISTANCE", &TRACK_MATCHING_DISTANCE, 0, 50, 5);
 
     // visible
     mGui->addParam("KINECT_ANGLE", &KINECT_ANGLE, -31, 30, 20);
@@ -135,40 +167,60 @@ void ScheinrieseApp::setup() {
     mGui->addParam("BLOB_MIN_AREA", &BLOB_MIN_AREA, 1, 100000, 5000);
     mGui->addParam("BLOB_MAX_AREA", &BLOB_MAX_AREA, 1, 500000, 500000);
     mGui->addParam("BLOB_BLUR", &BLOB_BLUR, 0, 20, 7);
-    mGui->addParam("BLOB_POLYGON_REDUCTION_MIN_DISTANCE", &BLOB_POLYGON_REDUCTION_MIN_DISTANCE, 0, 20, 10);
     mGui->addParam("BLOB_SCALE_MIN", &BLOB_SCALE_MIN, 0, 3, 0.1);
     mGui->addParam("BLOB_SCALE_MAX", &BLOB_SCALE_MAX, 0, 2, 1.5);
     mGui->addParam("BLOB_SCALE_DEPTH_CLAMP_MIN", &BLOB_SCALE_DEPTH_CLAMP_MIN, 0, 255, 30);
     mGui->addParam("BLOB_SCALE_DEPTH_CLAMP_MAX", &BLOB_SCALE_DEPTH_CLAMP_MAX, 0, 255, 142);
     mGui->addParam("BLOB_SCALE_EXPONENT", &BLOB_SCALE_EXPONENT, 0, 10, 4);
+    mGui->addParam("BLOB_SCALE_HEIGHT_OFFSET", &BLOB_SCALE_HEIGHT_OFFSET, 0, 100, 40);
+    mGui->addParam("BLOB_SCALE_SCALE", &BLOB_SCALE_SCALE, 0, 3, 1);
     mGui->addParam("BLOB_ALPHA_EDGE_BLEND", &BLOB_ALPHA_EDGE_BLEND, 1, 100, 2);
     mGui->addParam("ENABLE_SHADER", &ENABLE_SHADER, 0, 1, 1);
     mGui->addParam("BACKGROUND_SUBSTRACTION_INTERVAL", &BACKGROUND_SUBSTRACTION_INTERVAL, 0, 3600, 600);
-    mGui->addParam("TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE", &TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE, 0, 240, 30);
-    mGui->addParam("TRACK_MATCHING_DISTANCE", &TRACK_MATCHING_DISTANCE, 0, 50, 5);
-    
-    // output
-    mGui->addSeparator();
-    mFPSOut = mGui->addLabel("");
-    mFacesOut = mGui->addLabel("");
+
+    mGui->addParam("MASK_LEFT_TOP", &MASK_LEFT_TOP, 115, 135, 127);
+    mGui->addParam("MASK_LEFT_BOTTOM", &MASK_LEFT_BOTTOM, 120, 140, 131);
+    mGui->addParam("MASK_RIGHT_TOP", &MASK_RIGHT_TOP, 120, 140, 131);
+    mGui->addParam("MASK_RIGHT_BOTTOM", &MASK_RIGHT_BOTTOM, 120, 140, 131);
+    mGui->addParam("MASK_CIRCLE_RADIUS", &MASK_CIRCLE_RADIUS, 0, 200, 50);
+    mGui->addParam("MASK_CIRCLE_X_POS", &MASK_CIRCLE_X_POS, -50, 50, 0);
+    mGui->addParam("MASK_CIRCLE_Y_POS", &MASK_CIRCLE_Y_POS, -100, 100, 0);
 
     /* clean up controller window */
     mGui->getControlByName("WINDOW_WIDTH")->active=false;
     mGui->getControlByName("WINDOW_HEIGHT")->active=false;
     mGui->getControlByName("FULLSCREEN")->active=false;
 
-    mGui->getControlByName("BACKGROUND_SCALE_X")->active=false;
-    mGui->getControlByName("BACKGROUND_SCALE_Y")->active=false;
-    mGui->getControlByName("BACKGROUND_TRANSLATE_X")->active=false;
-    mGui->getControlByName("BACKGROUND_TRANSLATE_Y")->active=false;
+//    mGui->getControlByName("BACKGROUND_SCALE_X")->active=false;
+//    mGui->getControlByName("BACKGROUND_SCALE_Y")->active=false;
+//    mGui->getControlByName("BACKGROUND_TRANSLATE_X")->active=false;
+//    mGui->getControlByName("BACKGROUND_TRANSLATE_Y")->active=false;
+//
+//    mGui->getControlByName("RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_X")->active=false;
+//    mGui->getControlByName("RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_Y")->active=false;
+//    mGui->getControlByName("RGB_DEPTH_TEXTURE_ALIGN_SCALE")->active=false;
 
-    mGui->getControlByName("RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_X")->active=false;
-    mGui->getControlByName("RGB_DEPTH_TEXTURE_ALIGN_TRANSLATE_Y")->active=false;
-    mGui->getControlByName("RGB_DEPTH_TEXTURE_ALIGN_SCALE")->active=false;
+    mGui->getControlByName("MASK_LEFT_TOP")->active=false;
+    mGui->getControlByName("MASK_LEFT_BOTTOM")->active=false;
+    mGui->getControlByName("MASK_RIGHT_TOP")->active=false;
+    mGui->getControlByName("MASK_RIGHT_BOTTOM")->active=false;
+    mGui->getControlByName("MASK_CIRCLE_RADIUS")->active=false;
+    mGui->getControlByName("MASK_CIRCLE_X_POS")->active=false;
+    mGui->getControlByName("MASK_CIRCLE_Y_POS")->active=false;
+    
+    mGui->getControlByName("BLOB_POLYGON_REDUCTION_MIN_DISTANCE")->active=false;
+    mGui->getControlByName("TRACK_MAX_NUMBER_OF_FRAMES_INACTIVE")->active=false;
+    mGui->getControlByName("TRACK_MATCHING_DISTANCE")->active=false;
 
     mGui->load(getResourcePath(RES_SETTINGS));
-    mGui->setEnabled(true);
+    mGui->setEnabled(false);
     mGui->dump(); 
+
+    // output
+    mGui->addSeparator();
+    mFPSOut = mGui->addLabel("");
+    mBlobsOut = mGui->addLabel("");
+    mTracksOut = mGui->addLabel("");
 
     /* kinect */
 	console() << "+++ found " << Kinect::getNumDevices() << " kinect(s)." << std::endl;
@@ -193,6 +245,7 @@ void ScheinrieseApp::setup() {
     /* app */
     if (FULLSCREEN) {
         hideCursor();
+//        switch_resolution (WINDOW_WIDTH, WINDOW_HEIGHT, 60.0);
     }
     
     /* shader */
@@ -232,7 +285,12 @@ void ScheinrieseApp::update() {
     {
         stringstream mStr;
         mStr << "BLOBS: " << mBlobs.size();
-        mFacesOut->setText(mStr.str());
+        mBlobsOut->setText(mStr.str());
+    }
+    {
+        stringstream mStr;
+        mStr << "TRACKS: " << mTracks.size();
+        mTracksOut->setText(mStr.str());
     }
     setFrameRate( FRAME_RATE );
 
@@ -253,7 +311,6 @@ void ScheinrieseApp::update() {
             Surface::Iter iter = mSurface.getIter();
             
             /* convert to grey scale */
-            // TODO maybe we need background substraction
             // TODO the iteration below is quite useless
             IplImage* mGreyImage = cvCreateImage(cvSize(mSurface.getWidth(), mSurface.getHeight()), IPL_DEPTH_8U, 1);
             int i = 0;
@@ -265,7 +322,11 @@ void ScheinrieseApp::update() {
             }
             
             /* background subtraction */
-            cvAbsDiff(mGreyImage, mGreyBackgroundImage, mGreyImage);
+            // TODO maybe we need better background subtraction -> https://code.ros.org/trac/opencv/browser/trunk/opencv/samples/cpp/bgfg_segm.cpp
+            bool PERFORM_BACKGROUND_SUBTRACTION = false; // FUCK
+            if (PERFORM_BACKGROUND_SUBTRACTION) {
+                cvAbsDiff(mGreyImage, mGreyBackgroundImage, mGreyImage);
+            }
             
             /* threshold */
             if (BLOB_BLUR >= 1) {
@@ -275,7 +336,7 @@ void ScheinrieseApp::update() {
             
             /* track blobs */
             cvReleaseBlobs(mBlobs);
-//            cvReleaseTracks(mTracks);
+//            cvReleaseTracks(mTracks); // if we release track nothing is there to be tracked ;)
             IplImage* mLabelImg = cvCreateImage(cvGetSize(mGreyImage), IPL_DEPTH_LABEL, 1);
             cvLabel(mGreyImage, mLabelImg, mBlobs);
             
@@ -299,59 +360,75 @@ void ScheinrieseApp::update() {
         }
         if ( mNewDepthFrame ) {
             // TODO maybe reject blobs with in human dimensions
-            getAverageBlobDistanceMap(mBlobs, mAverageBlobDistanceMap);
+            getAverageBlobDistanceMap(mBlobs, mTracks, mAverageBlobDistanceMap);
         }
     }
     
-    /* background subtraction  */
+    /* background subtraction update */
     double mDeltaTime = getElapsedSeconds() - mTime;
     mTime = getElapsedSeconds();
     mBackgroundSubstractionCounter += mDeltaTime;
     if (mBackgroundSubstractionCounter > BACKGROUND_SUBSTRACTION_INTERVAL) {
         mBackgroundSubstractionCounter = 0.0;
+        const bool IGNORE_BLOBS = false;
+        const int MAX_IGNORE_BACKGROUND_UPDATE = 4;
         // TODO forcing update. this needs to be better ...
-        mColorBackgroundTexture.update(mKinect->getVideoImage());
-        updateBackgroundImage();
-//        if (mBlobs.size() == 0) {
-//            mColorBackgroundTexture.update(mKinect->getVideoImage());
-//            updateBackgroundImage();
-//        } else {
-//            // TODO ignore dead tracks -> mTracks
-//            console() << "+++ didn t perform background image update, because there was a blob." << endl;
-////            for (CvTracks::iterator it = mTracks.begin(); it!=mTracks.end(); it++) {
-////                CvTrack mTrack = *((*it).second);
-////                console() << mTrack.id 
-////                << " - " << mTrack.lifetime
-////                << " - " << mTrack.active
-////                << " - " << mTrack.inactive
-////                << endl;
-////            }
-//        }
+        if (IGNORE_BLOBS) {
+            mColorBackgroundTexture.update(mKinect->getVideoImage());
+            updateBackgroundImage();
+        } else {
+            if (mBlobs.size() == 0 || mIgnoreBackgroundUpdate > MAX_IGNORE_BACKGROUND_UPDATE) {
+                mColorBackgroundTexture.update(mKinect->getVideoImage());
+                updateBackgroundImage();
+                if (mIgnoreBackgroundUpdate > MAX_IGNORE_BACKGROUND_UPDATE) {
+                    console() << "+++ forced background image update." << endl;
+                }
+                mIgnoreBackgroundUpdate = 0;
+            } else {
+                // TODO ignore dead tracks -> mTracks
+                console() << "+++ didn t perform background image update, because there was a blob." << endl;
+                mIgnoreBackgroundUpdate++;
+                //            for (CvTracks::iterator it = mTracks.begin(); it!=mTracks.end(); it++) {
+                //                CvTrack mTrack = *((*it).second);
+                //                console() << mTrack.id 
+                //                << " - " << mTrack.lifetime
+                //                << " - " << mTrack.active
+                //                << " - " << mTrack.inactive
+                //                << endl;
+                //            }
+            }
+        }
     }
 }
 
 void ScheinrieseApp::draw() {
     /* -- */
-	gl::clear( Color( 1, 1, 1 ) ); 
-     
+	gl::clear( Color( 0, 0, 0 ) ); 
+    gl::setMatricesWindow(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    /* flip */
+    glPushMatrix();
+    glScalef(-1.0, 1.0, 1.0);
+    glTranslatef(-WINDOW_WIDTH, 0.0, 0.0);
+    
     /* shader */
     // TODO make this more opt'd
     if (ENABLE_SHADER) {
         mShader.bind();
-        const int STEPS = 8;
+        const int STEPS = 32;
         float mThresholds[STEPS];// = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
         for (int i=0; i < STEPS; ++i) {
             mThresholds[i] = float(i) / float(STEPS - 1);
         }
-        mShader.uniform("thresholds", mThresholds, 16);   
+        mShader.uniform("thresholds", mThresholds, STEPS);   
         mShader.uniform( "tex0", 0 );
     }
     
     /* draw image to as background */
-    // TODO this should be a static background image
-    gl::color(1, 1, 1, 1);
+    gl::color(1, 1, 1, BACKGROUND_IMAGE_ALPHA);
     gl::enableAlphaBlending();
     glPushMatrix();
+    
     glTranslatef(BACKGROUND_TRANSLATE_X, BACKGROUND_TRANSLATE_Y, 0.0);
     glScalef(BACKGROUND_SCALE_X, BACKGROUND_SCALE_Y, 1.0);
     gl::draw(mColorBackgroundTexture, Rectf(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT));
@@ -383,9 +460,11 @@ void ScheinrieseApp::draw() {
 
     gl::color(1, 1, 1, 1);
     gl::enableAlphaBlending();
-    drawTriangulatedBlobs(mBlobs);
-//    DEBUGdrawBlobsAndTracks(mBlobs, mTracks);  
+    drawTriangulatedBlobs(mBlobs, mTracks);
+    if (mGui->isEnabled()) {
+        DEBUGdrawBlobsAndTracks(mBlobs, mTracks);  
 //    drawDelaunay2D(mBlobs);
+    }
     gl::disableAlphaBlending();
     
     if (DRAW_DEBUG) {
@@ -405,10 +484,35 @@ void ScheinrieseApp::draw() {
         mShader.unbind();
     }
 
+    /* mask */
+    gl::color(0, 0, 0, 1);
+    
+    Path2d mPathLeft;
+    mPathLeft.moveTo(0, 0);
+    mPathLeft.lineTo(MASK_LEFT_TOP, 0);
+    mPathLeft.lineTo(MASK_LEFT_BOTTOM, WINDOW_HEIGHT);
+    mPathLeft.lineTo(0, WINDOW_HEIGHT);
+    mPathLeft.close();    
+    gl::drawSolid(mPathLeft);
+    
+    Path2d mPathRight;
+    mPathRight.moveTo(WINDOW_WIDTH, 0);
+    mPathRight.lineTo(WINDOW_WIDTH-MASK_RIGHT_TOP, 0);
+    mPathRight.lineTo(WINDOW_WIDTH-MASK_RIGHT_BOTTOM, WINDOW_HEIGHT);
+    mPathRight.lineTo(WINDOW_WIDTH, WINDOW_HEIGHT);
+    mPathRight.close();    
+    gl::drawSolid(mPathRight);
+    
+    gl::drawSolidCircle(Vec2f(WINDOW_WIDTH/2 + MASK_CIRCLE_X_POS, 
+                              WINDOW_HEIGHT + MASK_CIRCLE_Y_POS), MASK_CIRCLE_RADIUS);
+                
+    /* flip */
+    glPopMatrix();
+    
     /* gui */
     if (mGui->isEnabled()) {
         gl::enableAlphaBlending();
-        gl::color(1, 1, 1, 0.5);
+        gl::color(1, 1, 1, 1);
         drawCameraImages();
         gl::disableAlphaBlending();
         gl::color(1, 1, 1, 1);
@@ -417,32 +521,81 @@ void ScheinrieseApp::draw() {
 }
 
 void ScheinrieseApp::drawCameraImages() {
+//    if (mColorTexture) {
+//        gl::draw(mColorTexture, Rectf(10 + 330 * 0, 
+//                                      10, 
+//                                      330 * 1, 
+//                                      250));
+//    }
+//    if (mDepthTexture) {
+//        gl::draw(mDepthTexture, Rectf(10 + 330 * 1, 
+//                                      10, 
+//                                      330 * 2, 
+//                                      250 ));
+//        
+//        gl::draw(DEBUGmBlobTexture, Rectf(10 + 330 * 2, 
+//                                          10, 
+//                                          330 * 3, 
+//                                          250 ));        
+//    }
+    
+    // image width
+    const int IMAGE_WIDTH = 240;
+    const int IMAGE_HEIGHT = 180;
+    const int IMAGE_POS_Y_OFFSET = 10;
+    int mCounter = 0;
+    
     if (mColorTexture) {
-        gl::draw(mColorTexture, Rectf(10 + 330 * 0, 
-                                      10, 
-                                      330 * 1, 
-                                      250));
+        gl::draw(mColorTexture, Rectf(WINDOW_WIDTH - IMAGE_POS_Y_OFFSET, 
+                                      IMAGE_HEIGHT * (mCounter + 0), 
+                                      WINDOW_WIDTH - IMAGE_WIDTH - IMAGE_POS_Y_OFFSET, 
+                                      IMAGE_HEIGHT * (mCounter + 1)));
+        mCounter++;
     }
     if (mDepthTexture) {
-        gl::draw(mDepthTexture, Rectf(10 + 330 * 1, 
-                                      10, 
-                                      330 * 2, 
-                                      250 ));
-        
-        gl::draw(DEBUGmBlobTexture, Rectf(10 + 330 * 2, 
-                                     10, 
-                                     330 * 3, 
-                                     250 ));        
+        gl::draw(mDepthTexture, Rectf(WINDOW_WIDTH - IMAGE_POS_Y_OFFSET, 
+                                      IMAGE_HEIGHT * (mCounter + 0), 
+                                      WINDOW_WIDTH - IMAGE_WIDTH - IMAGE_POS_Y_OFFSET, 
+                                      IMAGE_HEIGHT * (mCounter + 1)));
+        mCounter++;
+        gl::draw(DEBUGmBlobTexture, Rectf(WINDOW_WIDTH - IMAGE_POS_Y_OFFSET, 
+                                      IMAGE_HEIGHT * (mCounter + 0), 
+                                      WINDOW_WIDTH - IMAGE_WIDTH - IMAGE_POS_Y_OFFSET, 
+                                      IMAGE_HEIGHT * (mCounter + 1)));
+        mCounter++;
     }
 }
 
-void ScheinrieseApp::getAverageBlobDistanceMap(const CvBlobs & pBlobs, vector<BlobDistanceMap> & pAverageBlobDistanceMap) {
+void ScheinrieseApp::getAverageBlobDistanceMap(const CvBlobs & pBlobs, const CvTracks & pTracks, vector<BlobDistanceMap> & pAverageBlobDistanceMap) {
+    /* copy blobs */
+    vector<BlobDistanceMap> mOldBlobDistanceMap;
+    for (int i=0; i < pAverageBlobDistanceMap.size(); ++i) {
+        mOldBlobDistanceMap.push_back(pAverageBlobDistanceMap[i]);
+    }
+
     pAverageBlobDistanceMap.clear();
+    
     for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {
         const CvBlob mBlob = *(it->second);
         const Surface mImage = mKinect->getDepthImage();
         unsigned int mCounter = 1;
         unsigned int mTotalBrightness = 0;
+                
+        /* find matching track */
+        bool mFoundTrack = false;
+        CvTrack mMatchingTrack;
+        for (CvTracks::const_iterator it=pTracks.begin(); it!=pTracks.end(); ++it) {
+            CvTrack mTrack = *it->second;
+            if (mBlob.label == mTrack.label) {
+                mFoundTrack = true;
+                mMatchingTrack = mTrack;
+                break;
+            }
+        }
+        if (!mFoundTrack) {
+            continue;
+        }
+        
         /* collect pixels from depthmap */
         for (int x=mBlob.minx; x < mBlob.maxx; ++x) {
             for (int y=mBlob.miny; y < mBlob.maxy; ++y) {
@@ -454,12 +607,64 @@ void ScheinrieseApp::getAverageBlobDistanceMap(const CvBlobs & pBlobs, vector<Bl
                 }
             }
         }
-
+                
         BlobDistanceMap mBlobDistanceMap;
         mBlobDistanceMap.blob = mBlob;
+        mBlobDistanceMap.track = mMatchingTrack;
         mBlobDistanceMap.average_distance = float(mTotalBrightness) / float(mCounter);
+
+        /* average position from existing blob */
+        bool mFoundOldBlob = false;
+        for (int i=0; i < mOldBlobDistanceMap.size(); ++i) {
+            if (mBlobDistanceMap.blob.label == mOldBlobDistanceMap[i].blob.label) {
+                mBlobDistanceMap.average_position.x = ( mOldBlobDistanceMap[i].track.centroid.x + mBlobDistanceMap.track.centroid.x ) / 2;
+                mBlobDistanceMap.average_position.y = ( mOldBlobDistanceMap[i].track.centroid.y + mBlobDistanceMap.track.centroid.y ) / 2;
+//                mBlobDistanceMap.average_min.x = ( mBlobDistanceMap.track.minx + mOldBlobDistanceMap[i].average_min.x ) / 2;
+//                mBlobDistanceMap.average_min.y = ( mBlobDistanceMap.track.miny + mOldBlobDistanceMap[i].average_min.y ) / 2;
+//                mBlobDistanceMap.average_max.x = ( mBlobDistanceMap.track.maxx + mOldBlobDistanceMap[i].average_max.x ) / 2;
+//                mBlobDistanceMap.average_max.y = ( mBlobDistanceMap.track.maxy + mOldBlobDistanceMap[i].average_max.y ) / 2;
+                mBlobDistanceMap.average_min.x = ( mBlobDistanceMap.track.minx + mOldBlobDistanceMap[i].track.minx ) / 2;
+                mBlobDistanceMap.average_min.y = ( mBlobDistanceMap.track.miny + mOldBlobDistanceMap[i].track.miny ) / 2;
+                mBlobDistanceMap.average_max.x = ( mBlobDistanceMap.track.maxx + mOldBlobDistanceMap[i].track.maxx ) / 2;
+                mBlobDistanceMap.average_max.y = ( mBlobDistanceMap.track.maxy + mOldBlobDistanceMap[i].track.maxy ) / 2;
+                mFoundOldBlob = true;
+                break;
+            }
+        }
+        if (!mFoundOldBlob) {
+            mBlobDistanceMap.average_position.x = mBlobDistanceMap.track.centroid.x;
+            mBlobDistanceMap.average_position.y = mBlobDistanceMap.track.centroid.y;
+            mBlobDistanceMap.average_min.x = mBlobDistanceMap.track.minx;
+            mBlobDistanceMap.average_min.y = mBlobDistanceMap.track.miny;
+            mBlobDistanceMap.average_max.x = mBlobDistanceMap.track.maxx;
+            mBlobDistanceMap.average_max.y = mBlobDistanceMap.track.maxy;            
+        }
+        
         pAverageBlobDistanceMap.push_back(mBlobDistanceMap);
     }
+//    pAverageBlobDistanceMap.clear();
+//    for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {
+//        const CvBlob mBlob = *(it->second);
+//        const Surface mImage = mKinect->getDepthImage();
+//        unsigned int mCounter = 1;
+//        unsigned int mTotalBrightness = 0;
+//        /* collect pixels from depthmap */
+//        for (int x=mBlob.minx; x < mBlob.maxx; ++x) {
+//            for (int y=mBlob.miny; y < mBlob.maxy; ++y) {
+//                const Color8u mPixel = mImage.getPixel(Vec2i(x, y));
+//                const int mBrightness = (mPixel.r + mPixel.g + mPixel.b) / 3; // a single component should suffice ...
+//                if (mBrightness > BLOB_THRESHOLD) {
+//                    mCounter++;
+//                    mTotalBrightness += mBrightness;
+//                }
+//            }
+//        }
+//
+//        BlobDistanceMap mBlobDistanceMap;
+//        mBlobDistanceMap.blob = mBlob;
+//        mBlobDistanceMap.average_distance = float(mTotalBrightness) / float(mCounter);
+//        pAverageBlobDistanceMap.push_back(mBlobDistanceMap);
+//    }
 }
 
 float edge_fade(float x, float n) {
@@ -472,71 +677,103 @@ float edge_fade(float x, float n) {
     return y;
 }
     
-void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs) {
+void ScheinrieseApp::drawTriangulatedBlobs(const CvBlobs & pBlobs, const CvTracks & pTracks) {
     /* iterate results */
     // TODO maybe use simplified polygons
     /* draw triangulated polygons with holes */
-//    for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {
-//        const CvBlob * mBlob = (*it).second; 
     for (int i=0; i<mAverageBlobDistanceMap.size(); ++i) {
         const CvBlob mBlob = mAverageBlobDistanceMap[i].blob;
         const CvContourPolygon* polygon = cvConvertChainCodesToPolygon(&mBlob.contour);
-        const CvContoursChainCode mInternalContours = mBlob.internalContours;
-        
+
         const Shape2d mShape = convertPolygonToShape2d(*polygon);
         Triangulator mTriangulator = Triangulator( mShape, 1.0 );
-        for (CvContoursChainCode::const_iterator mIterator = mInternalContours.begin(); mIterator != mInternalContours.end(); ++mIterator) {
-            const CvContourChainCode* mInteralContour = *mIterator;
-            const CvContourPolygon* mInternalPolygon = cvConvertChainCodesToPolygon(mInteralContour);
-            Shape2d mShape = convertPolygonToShape2d(*mInternalPolygon);
-            mTriangulator.addShape(mShape);
-            delete mInternalPolygon;
+
+        const bool DRAW_INSIDE_POLYGONS = false;
+        if (DRAW_INSIDE_POLYGONS) {
+            const CvContoursChainCode mInternalContours = mBlob.internalContours;
+            for (CvContoursChainCode::const_iterator mIterator = mInternalContours.begin(); mIterator != mInternalContours.end(); ++mIterator) {
+                const CvContourChainCode* mInteralContour = *mIterator;
+                const CvContourPolygon* mInternalPolygon = cvConvertChainCodesToPolygon(mInteralContour);
+                Shape2d mShape = convertPolygonToShape2d(*mInternalPolygon);
+                mTriangulator.addShape(mShape);
+                delete mInternalPolygon;
+            }
         }
         TriMesh2d mMesh = mTriangulator.calcMesh( Triangulator::WINDING_ODD );
         for (int j=0; j < mMesh.getVertices().size(); ++j) {
             mMesh.appendTexCoord(Vec2f(mMesh.getVertices()[j]));
         }
-                
+        delete polygon;
+        
+        /* find scale */
         float mScale = mAverageBlobDistanceMap[i].average_distance;
         mScale = min(max(mScale, BLOB_SCALE_DEPTH_CLAMP_MIN), BLOB_SCALE_DEPTH_CLAMP_MAX); // clamp to range
         mScale -= BLOB_SCALE_DEPTH_CLAMP_MIN;
         mScale /= BLOB_SCALE_DEPTH_CLAMP_MAX - BLOB_SCALE_DEPTH_CLAMP_MIN;
         mScale = 1.0 - mScale;
         float mAlpha = mScale;
+        float mYOffset = mScale;
         mScale = pow(mScale, BLOB_SCALE_EXPONENT);
         mScale *= BLOB_SCALE_MAX - BLOB_SCALE_MIN;
         mScale += BLOB_SCALE_MIN;
-        
-//        console() << i << ": " << mBlob.centroid.y << endl;
-//        console() << i << ": " << (mBlob.miny + (mBlob.maxy - mBlob.miny) / 2) << endl;
-
-        const float mMiddle = (mBlob.miny + (mBlob.maxy - mBlob.miny) / 2);//mBlob.centroid.y;        
-        
-        /* adjust postion */
-        float mOffset = 0.0;
-        mOffset = abs(float(mBlob.maxy - mBlob.miny));
-        if (true) {
-            /* fix them to the bottom of the unscaled blob */
-            mOffset = ( mOffset - ( mOffset * mScale ) ) / 2;
-        } else {
-            /* fix blob to bottom of screen */
-            // DOESN T WORK
-            mOffset = ( CAMERA_HEIGHT - mMiddle ) * mScale - mOffset / 2;
-        }
-        
-        // TODO clamp alpha at beginning and end.
+        mScale *= BLOB_SCALE_SCALE;
+        mScale = 1;// FUCK
+                   
+        /* calculate alpha according to distance */
         mAlpha = edge_fade(mAlpha, BLOB_ALPHA_EDGE_BLEND);
         gl::color(1, 1, 1, mAlpha);
         
+        /* find track */
+        bool mFoundTrack = false;
+        CvTrack mMatchingTrack;
+        for (CvTracks::const_iterator it=pTracks.begin(); it!=pTracks.end(); ++it) {
+            CvTrack mTrack = *it->second;
+            if (mBlob.label == mTrack.label) {
+                mFoundTrack = true;
+                mMatchingTrack = mTrack;
+                break;
+            }
+        }
+        if (!mFoundTrack) {
+            continue;
+        }
+        
+        /* adjust postion */
         glPushMatrix();
-        glTranslatef(mBlob.centroid.x, mMiddle, 0.0);
-        glTranslatef(0.0, mOffset, 0.0);
+        const bool DRAW_FROM_TOP = true;
+        const float mMinY = DRAW_FROM_TOP ? 0 : mMatchingTrack.miny;
+        const float mMaxY = DRAW_FROM_TOP ? 480 : mMatchingTrack.maxy;
+        const float mMinX = mMatchingTrack.minx;
+        const float mMaxX = mMatchingTrack.maxx;
+//        const float mMinY = DRAW_FROM_TOP ? 0 : mAverageBlobDistanceMap[i].average_min.y;
+//        const float mMaxY = DRAW_FROM_TOP ? 480 : mAverageBlobDistanceMap[i].average_max.y;
+//        const float mMinX = mAverageBlobDistanceMap[i].average_min.x;
+//        const float mMaxX = mAverageBlobDistanceMap[i].average_max.x;
+        const float x = mMinX + (mMaxX - mMinX) / 2.0;
+        const float y = mMinY + (mMaxY - mMinY) / 2.0;
+        const float mHeight = mMaxY - mMinY;
+        glTranslatef(0, -BLOB_SCALE_HEIGHT_OFFSET * mYOffset, 0.0); // move up a bit
+        glTranslatef(x, y, 0.0);
+        glTranslatef(0.0, CAMERA_HEIGHT - y, 0.0);
         glScalef(mScale, mScale, 1);
-        glTranslatef(-mBlob.centroid.x, -mMiddle, 0.0);
+        glTranslatef(-x, -y, 0.0);
+        glTranslatef(0.0, -mHeight / 2.0, 0.0);                
+
         draw(mMesh);
         glPopMatrix();
         
-        delete polygon;
+        if (mGui->isEnabled()) {
+            gl::enableAlphaBlending();
+            gl::color(1,0,0,0.5);
+            gl::drawSolidCircle(Vec2f(mBlob.centroid.x, mBlob.centroid.y), 10);
+            gl::color(0,1,0,0.5);
+            const float x = (mBlob.minx + (mBlob.maxx - mBlob.minx) / 2);
+            const float y = (mBlob.miny + (mBlob.maxy - mBlob.miny) / 2);
+            gl::drawSolidCircle(Vec2f(x, y), 10);
+            gl::color(0,0,1,1);
+            gl::drawStrokedCircle(mAverageBlobDistanceMap[i].average_position, 20);
+            gl::disableAlphaBlending();
+        }        
     }
 }
 
@@ -622,6 +859,11 @@ void ScheinrieseApp::drawDelaunay2D(const CvBlobs& pBlobs) {
 void ScheinrieseApp::DEBUGdrawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks) {
     /* iterate results */
     for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
+
+        /* draw bounding box */
+        const CvBlob mBlob = *((*it).second);
+        gl::color(1, 1, 1, 1);
+        gl::drawStrokedRect(Rectf(mBlob.minx-1, mBlob.miny-1, mBlob.maxx+1, mBlob.maxy+1));
         
         /* draw polygons */
         const CvContourPolygon* polygon = cvConvertChainCodesToPolygon(&(*it).second->contour);
@@ -776,10 +1018,16 @@ void ScheinrieseApp::keyDown( KeyEvent pEvent ) {
 
 
 void ScheinrieseApp::quit() {
+    console() << "### EXIT .";
+    setFullScreen( false );
+//    switch_resolution (1680, 1050, 60.0);
     try {
         // TODO find reliable way to quit
-        console() << "### EXIT .";
+        console() << ".";
+        kill(getpid(), 9);
+        console() << ".";
         mKinect->stop();
+        console() << ".";
         console() << ".";
         delete mKinect;
         delete mGui;
@@ -791,6 +1039,33 @@ void ScheinrieseApp::quit() {
     catch( ... ) {
         console() << "?" << endl;
     }
+}
+
+int switch_resolution (int pWidth, int pHeight, double pRefreshRate) {
+	CFDictionaryRef switchMode; 	// mode to switch to
+	CGDirectDisplayID mainDisplay;  // ID of main display    
+	CFDictionaryRef CGDisplayCurrentMode(CGDirectDisplayID display);
+        
+	mainDisplay = CGMainDisplayID();
+	switchMode = CGDisplayBestModeForParametersAndRefreshRate(mainDisplay, 32, pWidth, pHeight, pRefreshRate, NULL);
+    
+	if (! MyDisplaySwitchToMode(mainDisplay, switchMode)) {
+	    fprintf(stderr, "Error changing resolution to %d %d\n", pWidth, pHeight);
+		return 1;
+	}
+    
+	return 0;
+}
+
+bool MyDisplaySwitchToMode (CGDirectDisplayID display, CFDictionaryRef mode)
+{
+	CGDisplayConfigRef config;
+	if (CGBeginDisplayConfiguration(&config) == kCGErrorSuccess) {
+		CGConfigureDisplayMode(config, display, mode);
+		CGCompleteDisplayConfiguration(config, kCGConfigureForSession );
+		return true;
+	}
+	return false;
 }
 
 CINDER_APP_BASIC( ScheinrieseApp, RendererGl )
