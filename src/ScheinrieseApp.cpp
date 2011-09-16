@@ -1,3 +1,7 @@
+/**
+ * TheProduct (c) 2011
+ */
+
 // TODO: 'Mac OS X Lion – Disable app resume and window restore functionality' System Preferences -> General -> Remove the check from “Restore windows when quitting and re-opening apps”.
 
 #include "Resources.h"
