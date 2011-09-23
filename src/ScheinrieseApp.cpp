@@ -15,6 +15,7 @@
 #include "SimpleGUI.h"
 #include "cinder/TriMesh.h"
 #include "cinder/Triangulate.h"
+#include "OscSender.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 
@@ -91,6 +92,7 @@ private:
     void            estimateDistanceFromBlobDepth(const CvBlob & pBlob);
     void            estimatePosition(const CvBlob & pBlob);
     float           getAlphaByDistance();
+    void            heartbeat(double mDeltaTime);
 
     /* properties */
     SimpleGUI *             mGui;
@@ -102,9 +104,12 @@ private:
     bool                    FULLSCREEN;
     int                     KINECT_ANGLE;  
     int                     BLOB_THRESHOLD;
+    int                     BLOB_THRESHOLD_METHOD;
+    int                     BLOB_SRC_IMAGE_TYPE;
     int                     BLOB_MIN_AREA;
     int                     BLOB_MAX_AREA;
     int                     BLOB_BLUR;
+    
     float                   POLYGON_REDUCTION_MIN_DISTANCE;
     float                   POLYGON_OUTLINE_WIDTH;
     float                   DEPTH_TEX_ALIGN_X;
@@ -168,6 +173,7 @@ private:
     Surface                     mDepthImages[DEPTH_BUFFER_IMAGE_SIZE];
     int                         mDepthImageCounter;
     Surface                     mProcessedImage;
+    Surface                     mAveragedSurface;
     
     /* blobs */
     CvBlobs                 mBlobs;
@@ -181,6 +187,13 @@ private:
     Sampler         mSamplerScaleFromDepth;
     Sampler         mSamplerDistanceFromDepth;
     Sampler         mSamplerXPosition;
+    
+    /* watchdog */
+    osc::Sender     mWatchdogSender;
+	std::string     mWatchdogHost;
+	int             mWatchdogPort;
+    float           mWatchdogCounter;
+    float           mWatchdogInterval;
 };
 
 void ScheinrieseApp::setup() { 
@@ -190,7 +203,14 @@ void ScheinrieseApp::setup() {
     mScaleFromHeight = 0;
     mScaleFromDepth = 0;
     mFixedYPosition = CAMERA_HEIGHT; // we assume that all blobs start at the bottom
-    
+
+    /* watchdog */
+    mWatchdogHost = "localhost";
+	mWatchdogPort = 8080;
+	mWatchdogSender.setup(mWatchdogHost, mWatchdogPort);
+    mWatchdogCounter = 0.0;
+    mWatchdogInterval = 2.5;
+
     /* settings */
     mGui = new SimpleGUI(this);
     
@@ -214,6 +234,9 @@ void ScheinrieseApp::setup() {
 
     mGui->addParam("KINECT_ANGLE", &KINECT_ANGLE, -31, 30, 20);
     mGui->addParam("BLOB_THRESHOLD", &BLOB_THRESHOLD, 1, 255, 30);
+    mGui->addParam("BLOB_THRESHOLD_METHOD", &BLOB_THRESHOLD_METHOD, 0, 2, 0);
+    mGui->addParam("BLOB_SRC_IMAGE_TYPE", &BLOB_SRC_IMAGE_TYPE, 0, 2, 0);
+    
     mGui->addParam("BLOB_MIN_AREA", &BLOB_MIN_AREA, 1, 100000, 100);
     mGui->addParam("BLOB_MAX_AREA", &BLOB_MAX_AREA, 1, 500000, 500000);
     mGui->addParam("BLOB_BLUR", &BLOB_BLUR, 0, 50, 7  );
@@ -259,6 +282,8 @@ void ScheinrieseApp::setup() {
     mGui->addParam("DISTANCE_FADE_EXP", &DISTANCE_FADE_EXP, 0, 8, 1);
     mGui->addParam("DISTANCE_FADE_EDGE_NEAR", &DISTANCE_FADE_EDGE_NEAR, 0.0, 0.2, 0.1);
     mGui->addParam("DISTANCE_FADE_EDGE_FAR", &DISTANCE_FADE_EDGE_FAR, 0.8, 1.0, 0.9);
+//    mGui->addParam("DISTANCE_CLAMP_EDGE_NEAR", &DISTANCE_CLAMP_EDGE_NEAR, 0.0, 0.2, 0.05);
+//    mGui->addParam("DISTANCE_CLAMP_EDGE_FAR", &DISTANCE_CLAMP_EDGE_FAR, 0.8, 1.0, 0.95);
     
     mGui->load(getResourcePath(RES_SETTINGS));
     mGui->setEnabled(false);
@@ -277,6 +302,7 @@ void ScheinrieseApp::setup() {
         console() << "+++ waiting for kinect ..." << endl;
         while(!mKinect->checkNewDepthFrame()) {}
         /* fill depth buffer */
+        mAveragedSurface = Surface( CAMERA_WIDTH, CAMERA_HEIGHT, false, SurfaceChannelOrder::RGB );
         for (int i=0; i<DEPTH_BUFFER_IMAGE_SIZE; ++i) {
             mDepthImages[i] = mKinect->getDepthImage(); 
         }
@@ -284,6 +310,7 @@ void ScheinrieseApp::setup() {
         mProcessedImage = getDepthImage();
         DEBUGmDepthTexture = getDepthImage();
         DEBUGmBlobTexture = getDepthImage();
+
         /* - */
         while(!mKinect->checkNewVideoFrame()) {}
         mColorTexture = getVideoImage();
@@ -304,12 +331,27 @@ void ScheinrieseApp::setup() {
     console() << "+++ done setting up." << endl;
 }
 
+
+
 Surface ScheinrieseApp::getDepthImage() {
-    Surface mAveragedSurface( CAMERA_WIDTH, CAMERA_HEIGHT, false, SurfaceChannelOrder::RGB );
+    return mAveragedSurface;
+}
+
+Surface ScheinrieseApp::getVideoImage() {
+    return mKinect->getVideoImage();
+}
+
+void ScheinrieseApp::updateDepthImageBuffer() {   
+    mDepthImages[mDepthImageCounter] = mKinect->getDepthImage();
+    mDepthImageCounter++;
+    mDepthImageCounter %= DEPTH_BUFFER_IMAGE_SIZE;
+    
+    /* --- */
+    mAveragedSurface = Surface( CAMERA_WIDTH, CAMERA_HEIGHT, false, SurfaceChannelOrder::RGB );
     
     uint8_t * mData = mAveragedSurface.getData();
     const int mLength = CAMERA_WIDTH * CAMERA_HEIGHT * 3;
-
+    
     for (int j=0; j<mLength; ++j) {
         int mAveragedPixel = 0;
         for (int i=0; i<DEPTH_BUFFER_IMAGE_SIZE; ++i) {
@@ -331,18 +373,6 @@ Surface ScheinrieseApp::getDepthImage() {
             iter.b() *= mValue;
         }
     }
-
-    return mAveragedSurface;
-}
-
-Surface ScheinrieseApp::getVideoImage() {
-    return mKinect->getVideoImage();
-}
-
-void ScheinrieseApp::updateDepthImageBuffer() {
-    mDepthImages[mDepthImageCounter] = mKinect->getDepthImage();
-    mDepthImageCounter++;
-    mDepthImageCounter %= DEPTH_BUFFER_IMAGE_SIZE;
 }
 
 void ScheinrieseApp::update() {
@@ -391,25 +421,39 @@ void ScheinrieseApp::update() {
         }
         /* depth image */
         if ( mNewDepthFrame ) {
-            updateDepthImageBuffer();
-            Surface mSurface = getDepthImage();
-            
+            Surface mSurface;
+            switch (BLOB_SRC_IMAGE_TYPE) {
+                case 0:
+                    updateDepthImageBuffer();
+                    mSurface = getDepthImage();
+                    break;
+                case 1:
+                    mSurface = getVideoImage();
+                    break;
+            }
             /* copy to grey scale manually */
             Surface::Iter iter = mSurface.getIter();
             IplImage* mGreyImage = cvCreateImage(cvSize(mSurface.getWidth(), mSurface.getHeight()), IPL_DEPTH_8U, 1);
             int i = 0;
             while( iter.line() ) {
                 while( iter.pixel() ) {
-                    mGreyImage->imageData[i] = iter.r();
+                    mGreyImage->imageData[i] = (iter.r() + iter.g() + iter.b()) / 3;
                     i++;
                 }
             }
-                        
+            
             /* threshold */
             if (BLOB_BLUR >= 1) {
                 cvSmooth(mGreyImage, mGreyImage, CV_BLUR, BLOB_BLUR, BLOB_BLUR);
             }
-            cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD, 255, CV_THRESH_BINARY);           
+            switch (BLOB_THRESHOLD_METHOD) {
+                case 0:
+                    cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD, 255, CV_THRESH_BINARY);
+                    break;
+                case 1:
+                    cvThreshold(mGreyImage, mGreyImage, BLOB_THRESHOLD, 255, CV_THRESH_OTSU);
+                    break;
+            }
             
             /* mask !ROI */
             { // left
@@ -461,12 +505,28 @@ void ScheinrieseApp::update() {
     }
 }
 
+void ScheinrieseApp::heartbeat(double mDeltaTime) {
+    mWatchdogCounter += mDeltaTime;
+    if (mWatchdogCounter > mWatchdogInterval) {
+        mWatchdogCounter = 0.0;
+        console() << "+++ heartbeat" << std::endl;
+        osc::Message mMessage;
+        mMessage.addIntArg(getpid());
+        mMessage.setAddress("/watchdog/register");
+        mMessage.setRemoteEndpoint(mWatchdogHost, mWatchdogPort);
+        mWatchdogSender.sendMessage(mMessage);
+    }    
+}
+
 double mTime = 0;
 
 void ScheinrieseApp::draw() {
     /* delta time */
-//    double mDeltaTime = getElapsedSeconds() - mTime;
+    double mDeltaTime = getElapsedSeconds() - mTime;
     mTime = getElapsedSeconds();
+
+    /* heartbeat */
+    heartbeat(mDeltaTime);
 
     /* -- */
 	gl::clear( Color( 0, 0, 0 ) ); 
@@ -833,8 +893,6 @@ void ScheinrieseApp::drawBlob(const CvBlob & pBlob) {
     /* draw mesh */
     glPushMatrix();
     glTranslatef(mSamplerXPosition.getAverage(), mFixedYPosition, 0.0);
-    console() << mScaleFromDepth << endl;
-    console() << mScaleFromHeight << endl;
     switch(DISTANCE_ESTIMATION_STRATEGY) {
         case 0:
             glScalef(mSamplerScaleFromDepth.getAverage(), mSamplerScaleFromDepth.getAverage(), 1);
@@ -1049,4 +1107,4 @@ float edge_fade(float x, float n) {
     return y;
 }
 
-CINDER_APP_BASIC( ScheinrieseApp, RendererGl )
+CINDER_APP_BASIC( ScheinrieseApp, RendererGl(0) )
